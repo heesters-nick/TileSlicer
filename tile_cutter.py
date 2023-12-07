@@ -41,6 +41,10 @@ band_constraint = 5
 download_tiles = True
 # Plot cutouts from one of the tiles after execution
 with_plot = True
+# Show plot
+show_plot = False
+# Save plot
+save_plot = True
 
 # paths
 # define the root directory
@@ -165,7 +169,6 @@ def make_cutouts_all_bands(tile, obj_in_tile, download_dir, in_dict, size):
     """
     cutout = np.empty((len(obj_in_tile), len(in_dict), size, size))
     tile_dir = download_dir+f'{tile[0]}_{tile[1]}'
-#     times = []
     for j, band in enumerate(in_dict.keys()):
         prefix = in_dict[band]['name']
         suffix = in_dict[band]['suffix']
@@ -176,8 +179,6 @@ def make_cutouts_all_bands(tile, obj_in_tile, download_dir, in_dict, size):
             data = hdul[fits_ext].data
         for i, (x, y) in enumerate(zip(obj_in_tile.x.values, obj_in_tile.y.values)):
             cutout[i, j] = make_cutout(data, x, y, size)
-#         times.append(np.round(end-start,3))
-#     print(f'Time spend per iteration: {times}')
     return cutout
 
 
@@ -225,7 +226,7 @@ def process_tile(tile, catalog, id_key, ra_key, dec_key, cutout_dir, h5_name, do
     return cutout
 
 
-def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info_dir, in_dict, at_least_key, band_constr, download_dir, cutout_dir, figure_dir, size, h5_name, workers, coordinates=None, dataframe_path=None, ra_key=None, dec_key=None, id_key=None):
+def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info_dir, in_dict, at_least_key, band_constr, download_dir, cutout_dir, figure_dir, size, h5_name, workers, coordinates=None, dataframe_path=None, ra_key=None, dec_key=None, id_key=None, show_plt=False, save_plt=False):
     if coordinates is not None:
         print(f'Coordinates received from command line: {coordinates}')
         ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
@@ -292,7 +293,7 @@ def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info
                                        f'_{tiles_x_bands[idx][0]}_{tiles_x_bands[idx][1]}.h5')
             cutout = read_h5(cutout_path)
 
-            plot_cutout(cutout, in_dict, figure_dir, save_plot=True)
+            plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
 
 
 if __name__ == "__main__":
@@ -328,7 +329,9 @@ if __name__ == "__main__":
         'dataframe_path': args.dataframe,
         'ra_key': args.ra_key,
         'dec_key': args.dec_key,
-        'id_key': args.id_key
+        'id_key': args.id_key,
+        'show_plt': show_plot,
+        'save_plt': save_plot
     }
 
     start = time.time()
