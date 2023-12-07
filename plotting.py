@@ -20,6 +20,10 @@ def plot_cutout(cutout, in_dict, figure_dir, show_plot=True, save_plot=False):
     n_objects, n_bands = image_data.shape[0], image_data.shape[1]
     fig, axes = plt.subplots(n_objects, n_bands, figsize=(n_bands*4, n_objects*4))
 
+    # Make sure axes is always a 2D array
+    if n_objects == 1:
+        axes = np.expand_dims(axes, axis=0)
+
     # Loop through objects and filter bands, and plot each image
     for i in range(n_objects):  # Number of objects
         for j, band in enumerate(in_dict.keys()):  # Number of filter bands

@@ -8,7 +8,7 @@ from astropy.coordinates import SkyCoord
 from astropy.wcs.utils import skycoord_to_pixel
 from astropy.nddata.utils import Cutout2D
 from utils import update_available_tiles, extract_tile_numbers, load_available_tiles, TileAvailability, read_h5
-from kd_tree import query_tree, TileWCS, relate_coord_tile
+from kd_tree import query_tree, TileWCS, relate_coord_tile, build_tree
 from plotting import plot_cutout
 import concurrent.futures
 from concurrent.futures import ProcessPoolExecutor
@@ -18,6 +18,10 @@ import random
 from vos import Client
 client = Client()
 
+# To work with the client you need to get CANFAR X509 certificates
+# Run these lines on the command line:
+# cadc-get-cert -u yourusername
+# cp ${HOME}/.ssl/cadcproxy.pem .
 
 band_dict = {'cfis-u': {'name': 'CFIS', 'band': 'u', 'vos': 'vos:cfis/tiles_DR5/', 'suffix': '.u.fits', 'delimiter': '.', 'fits_ext': 0},
              'whigs-g': {'name': 'calexp-CFIS', 'band': 'g', 'vos': 'vos:cfis/whigs/stack_images_CFIS_scheme/', 'suffix': '.fits', 'delimiter': '_', 'fits_ext': 1},
@@ -30,21 +34,26 @@ catalog_script = pd.read_csv(cat_directory+'NGC5485_dwarfs.csv')
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update = False
+update_tiles = False
+# build kd tree with updated tiles otherwise use the already saved tree
+if update_tiles:
+    build_new_kdtree = True
+else:
+    build_new_kdtree = False
 # return the number of available tiles that are available in at least 5, 4, 3, 2, 1 bands
 at_least = False
 # show stats on currently available tiles, remember to update
-show_stats = True
+show_tile_statistics = False
 # define the minimum number of bands that should be available for a tile
 band_constraint = 5
 # download the tiles
 download_tiles = True
 # Plot cutouts from one of the tiles after execution
-with_plot = True
+with_plot = False
 # Show plot
 show_plot = False
 # Save plot
-save_plot = True
+save_plot = False
 
 # paths
 # define the root directory
@@ -82,7 +91,7 @@ def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):
     tiles_matching_catalog = np.empty(len(catalog), dtype=tuple)
     pix_coords = np.empty((len(catalog), 2), dtype=np.float64)
     for i, obj_coord in enumerate(coord_c):
-        tile_numbers, _ = query_tree(available_tiles, np.array([obj_coord.ra.deg, obj_coord.dec.deg]), tile_info_dir, build=False)
+        tile_numbers, _ = query_tree(available_tiles, np.array([obj_coord.ra.deg, obj_coord.dec.deg]), tile_info_dir)
         tiles_matching_catalog[i] = tile_numbers
         wcs = TileWCS()
         wcs.set_coords(relate_coord_tile(nums=tile_numbers))
@@ -198,7 +207,7 @@ def save_to_h5(stacked_cutout, tile_numbers, ids, ras, decs, save_path):
     with h5py.File(save_path, 'w', libver='latest') as hf:
         hf.create_dataset('images', data=stacked_cutout.astype(np.float32))
         hf.create_dataset('tile', data=np.asarray(tile_numbers), dtype=np.int32)
-        hf.create_dataset('cfis_id', data=np.asarray(ids), dtype=dt)
+        hf.create_dataset('cfis_id', data=np.asarray(ids, dtype='S'), dtype=dt)
         hf.create_dataset('ra', data=ras.astype(np.float32))
         hf.create_dataset('dec', data=decs.astype(np.float32))
     pass
@@ -226,13 +235,18 @@ def process_tile(tile, catalog, id_key, ra_key, dec_key, cutout_dir, h5_name, do
     return cutout
 
 
-def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info_dir, in_dict, at_least_key, band_constr, download_dir, cutout_dir, figure_dir, size, h5_name, workers, coordinates=None, dataframe_path=None, ra_key=None, dec_key=None, id_key=None, show_plt=False, save_plt=False):
+def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info_dir, in_dict, at_least_key, band_constr, download_dir, cutout_dir, figure_dir, size, h5_name, workers, update, show_stats, dl_tiles, build_kdtree, coordinates=None, dataframe_path=None, ra_key=None, dec_key=None, id_key=None, show_plt=False, save_plt=False):
     if coordinates is not None:
+        coordinates = coordinates[0]
+        if (len(coordinates) == 0) or len(coordinates) % 2 != 0:
+            raise ValueError('Provide even number of coordinates.')
         print(f'Coordinates received from command line: {coordinates}')
+        ras, decs, ids = coordinates[::2], coordinates[1::2], list(np.arange(1, len(coordinates)//2 + 1))
+        print(f'ras: {ras}, decs: {decs}, ids: {ids}')
         ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
-        df_coordinates = pd.DataFrame(coordinates, columns=[ra_key, dec_key])
-        df_coordinates[id_key] = range(1, len(df_coordinates) + 1)
+        df_coordinates = pd.DataFrame({id_key: ids, ra_key: ras, dec_key: decs})
         catalog = df_coordinates
+        df_coordinates.to_csv('df_coordinates_test.csv', index=False)
         coord_c = SkyCoord(catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs')
     elif dataframe_path is not None:
         print(f'Dataframe received from command line.')
@@ -249,12 +263,14 @@ def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info
     u, g, lsb_r, i, z = extract_tile_numbers(load_available_tiles(tile_info_dir))
     all_bands = [u, g, lsb_r, i, z]
     availability = TileAvailability(all_bands, in_dict, at_least_key)
+    if build_kdtree:
+        build_tree(availability.unique_tiles, tile_info_dir)
     if show_stats:
         availability.stats()
 
     unique_tiles, tiles_x_bands = tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr)
 
-    if download_tiles:
+    if dl_tiles:
         start_download = time.time()
         for tile in tiles_x_bands:
             if download_tile_for_bands(tile, in_dict, download_dir, method='command'):
@@ -325,6 +341,10 @@ if __name__ == "__main__":
         'size': cutout_size,
         'h5_name': h5_filename,
         'workers': num_workers,
+        'update': update_tiles,
+        'show_stats': show_tile_statistics,
+        'dl_tiles': download_tiles,
+        'build_kdtree': build_new_kdtree,
         'coordinates': args.coordinates,
         'dataframe_path': args.dataframe,
         'ra_key': args.ra_key,

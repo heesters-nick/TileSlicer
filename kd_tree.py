@@ -23,18 +23,14 @@ def build_tree(tiles, tile_info_dir, save=True):
     pass
 
 
-def query_tree(tiles, coords, tile_info_dir, build=False, save=True):
+def query_tree(tiles, coords, tile_info_dir):
     """
     Query the kd tree to find what tile an object is in.
     :param tiles: list of tile numbers as tuples
     :param coords: ra, dec of object to query
     :param tile_info_dir: path to save and load the tree
-    :param build: if true build the tree first, default=False
-    :param save: save the tree
     :return tile name and distance object - nearest tile center
     """
-    if build:
-        build_tree(tiles, tile_info_dir, save)
     loaded_tree = joblib.load(tile_info_dir + 'kdtree_xyz.joblib')
     try:
         tile_name, dist = find_tile(loaded_tree, tiles, coords)

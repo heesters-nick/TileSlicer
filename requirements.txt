@@ -2,7 +2,7 @@ numpy
 matplotlib
 scipy
 pandas
-astropy
+astropy>=6.0.0
 tqdm
 h5py
 jupyter
@@ -10,4 +10,4 @@ ipympl
 ipywidgets
 astroquery
 joblib
-vos
+vos  # run pip install -U vos
