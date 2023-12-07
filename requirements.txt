@@ -1,0 +1,13 @@
+numpy
+matplotlib
+scipy
+pandas
+astropy
+tqdm
+h5py
+jupyter
+ipympl
+ipywidgets
+astroquery
+joblib
+vos
