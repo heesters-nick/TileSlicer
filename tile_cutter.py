@@ -53,7 +53,7 @@ save_plot = False
 
 # paths
 # define the root directory
-parent_directory = '/home/nick/astro/TileSlicer/'
+parent_directory = '/arc/home/heestersnick/tileslicer/'
 cat_directory = os.path.join(parent_directory, 'tables/')
 os.makedirs(cat_directory, exist_ok=True)
 catalog_script = pd.read_csv(cat_directory+'NGC5485_dwarfs.csv')

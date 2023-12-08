@@ -2,3 +2,4 @@
 data/
 figures/
 h5_files/
+__pycache__/
