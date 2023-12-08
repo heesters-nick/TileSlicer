@@ -141,7 +141,7 @@ class TileAvailability:
             print('\nTile number not available in any band.')
             return []
         bands_available = np.where(self.availability_matrix[index] == 1)[0]
-        return [self.band_dict[list(self.band_dict.keys())[i]]['band'] for i in bands_available]
+        return [self.band_dict[list(self.band_dict.keys())[i]]['band'] for i in bands_available], bands_available
 
     def stats(self):
         print("\nNumber of currently available tiles per band:\n")
