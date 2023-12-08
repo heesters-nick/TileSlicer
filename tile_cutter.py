@@ -49,7 +49,7 @@ with_plot = True
 # Show plot
 show_plot = False
 # Save plot
-save_plot = True
+save_plot = False
 
 # paths
 # define the root directory
