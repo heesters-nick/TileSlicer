@@ -1,0 +1,4 @@
+# Ignore entire data folder
+data/
+figures/
+h5_files/
