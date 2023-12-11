@@ -1,4 +1,4 @@
-# Ignore entire data folder
+# Ignore these folders
 data/
 figures/
 h5_files/
