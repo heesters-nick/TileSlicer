@@ -1,5 +1,8 @@
-# Ignore these folders
+# Ignore these files and folders
 data/
 figures/
 h5_files/
 __pycache__/
+TileSlicer.code-workspace
+notebooks/.ipynb_checkpoints/
+.vscode/

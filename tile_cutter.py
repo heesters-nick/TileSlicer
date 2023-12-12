@@ -46,6 +46,8 @@ band_constraint = 3
 download_tiles = True
 # Plot cutouts from one of the tiles after execution
 with_plot = True
+# Plot a random cutout from one of the tiles after execution else plot all cutouts
+plot_random_cutout = False
 # Show plot
 show_plot = False
 # Save plot
@@ -53,7 +55,7 @@ save_plot = False
 
 # paths
 # define the root directory
-parent_directory = '/arc/home/heestersnick/tileslicer/'
+parent_directory = '/home/nick/astro/TileSlicer/'
 cat_directory = os.path.join(parent_directory, 'tables/')
 os.makedirs(cat_directory, exist_ok=True)
 catalog_script = pd.read_csv(cat_directory+'NGC5485_dwarfs.csv')
@@ -234,6 +236,12 @@ def process_tile(availability, tile, catalog, id_key, ra_key, dec_key, cutout_di
     :return image cutout in available bands, array with shape: (n_bands, cutout_size, cutout_size)
     """
     save_path = os.path.join(cutout_dir, h5_name + f'_{tile[0]}_{tile[1]}.h5')
+
+    # check if the tile has already been processed
+    if os.path.exists(save_path):
+        print(f'Tile {tile} has already been processed.')
+        return None
+    
     obj_in_tile = catalog.loc[catalog['tile'] == tile]
     cutout = make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dict, size)
     save_to_h5(cutout, tile, obj_in_tile[id_key].values, obj_in_tile[ra_key].values, obj_in_tile[dec_key].values, save_path)
@@ -241,6 +249,7 @@ def process_tile(availability, tile, catalog, id_key, ra_key, dec_key, cutout_di
 
 
 def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info_dir, in_dict, at_least_key, band_constr, download_dir, cutout_dir, figure_dir, size, h5_name, workers, update, show_stats, dl_tiles, build_kdtree, coordinates=None, dataframe_path=None, ra_key=None, dec_key=None, id_key=None, show_plt=False, save_plt=False):
+    # check if the coordinates are provided as a list of pairs of coordinates or as a DataFrame
     if coordinates is not None:
         coordinates = coordinates[0]
         if (len(coordinates) == 0) or len(coordinates) % 2 != 0:
@@ -264,23 +273,31 @@ def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info
         catalog = cat_default
         ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
         coord_c = SkyCoord(catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs')
+    # update information on the currently available tiles
     if update:
         update_available_tiles(tile_info_dir)
 
+    # extract the tile numbers from the available tiles
     u, g, lsb_r, i, z = extract_tile_numbers(load_available_tiles(tile_info_dir))
     all_bands = [u, g, lsb_r, i, z]
+    # create the tile availability object
     availability = TileAvailability(all_bands, in_dict, at_least_key)
+    # build the kd tree
     if build_kdtree:
         build_tree(availability.unique_tiles, tile_info_dir)
+    # show stats on the currently available tiles
     if show_stats:
         availability.stats()
 
+    # find the tiles the objects are in and check how many meet the band constraint
     unique_tiles, tiles_x_bands = tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr)
 
+    # print information on the tile availability
     for tile in unique_tiles:
         bands = availability.get_availability(tile)[0]
         print(f'Tile {tile} is available in {len(bands)} bands: {bands}')
 
+    # download the tiles
     if dl_tiles:
         print('Downloading the tiles in the available bands..')
         start_download = time.time()
@@ -293,6 +310,7 @@ def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info
     total_cutouts_count = 0
     failed_tiles = []
 
+    # process the tiles in parallel
     with ProcessPoolExecutor(max_workers=workers) as executor:
         future_to_tile = {
             executor.submit(process_tile, availability, tile, catalog, id_key, ra_key, dec_key, cutout_dir, h5_name, download_dir,
@@ -314,8 +332,15 @@ def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info
     if len(failed_tiles) != 0:
         print(f'Processing error in tiles: {failed_tiles}.')
 
+    # plot all cutouts or just a random one
     if with_plot:
-        random_tile_index = random.randint(0, len(tiles_x_bands))
+        if plot_random_cutout:
+            random_tile_index = random.randint(0, len(tiles_x_bands))
+            cutout_path = os.path.join(cutout_dir, h5_name +
+                                        f'_{tiles_x_bands[random_tile_index][0]}_{tiles_x_bands[random_tile_index][1]}.h5')
+            cutout = read_h5(cutout_path)
+            plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
+
         for idx in range(len(tiles_x_bands)):
             cutout_path = os.path.join(cutout_dir, h5_name +
                                        f'_{tiles_x_bands[idx][0]}_{tiles_x_bands[idx][1]}.h5')
@@ -325,6 +350,7 @@ def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info
 
 
 if __name__ == "__main__":
+    # parse command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--coordinates', nargs='+', type=float, action='append', metavar=('ra', 'dec'),
                         help='list of pairs of coordinates to make cutouts from')
@@ -338,6 +364,7 @@ if __name__ == "__main__":
                         help='id key in the DataFrame')
     args = parser.parse_args()
 
+    # define the arguments for the main function
     arg_dict_main = {
         'cat_default': catalog_script,
         'ra_key_default': ra_key_script,
