@@ -138,8 +138,8 @@ class TileAvailability:
         try:
             index = self.unique_tiles.index(tuple(tile_number))
         except:
-            print('\nTile number not available in any band.')
-            return []
+            # print(f'Tile number {tile_number} not available in any band.')
+            return None, []
         bands_available = np.where(self.availability_matrix[index] == 1)[0]
         return [self.band_dict[list(self.band_dict.keys())[i]]['band'] for i in bands_available], bands_available
 

@@ -42,10 +42,12 @@ at_least = False
 show_tile_statistics = False
 # define the minimum number of bands that should be available for a tile
 band_constraint = 3
+# print per tile availability
+print_per_tile_availability = False
 # download the tiles
-download_tiles = True
+download_tiles = False
 # Plot cutouts from one of the tiles after execution
-with_plot = True
+with_plot = False
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
 plot_random_cutout = False
 # Show plot
@@ -56,9 +58,9 @@ save_plot = False
 # paths
 # define the root directory
 parent_directory = '/home/nick/astro/TileSlicer/'
-cat_directory = os.path.join(parent_directory, 'tables/')
-os.makedirs(cat_directory, exist_ok=True)
-catalog_script = pd.read_csv(cat_directory+'NGC5485_dwarfs.csv')
+table_directory = os.path.join(parent_directory, 'tables/')
+os.makedirs(table_directory, exist_ok=True)
+catalog_script = pd.read_csv(table_directory+'known_dwarfs.csv')
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
 tile_info_directory = os.path.join(parent_directory, 'tile_info/')
@@ -92,9 +94,17 @@ def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):
     available_tiles = availability.unique_tiles
     tiles_matching_catalog = np.empty(len(catalog), dtype=tuple)
     pix_coords = np.empty((len(catalog), 2), dtype=np.float64)
+    bands = np.empty(len(catalog), dtype=object)
+    n_bands = np.empty(len(catalog), dtype=np.int32)
     for i, obj_coord in enumerate(coord_c):
         tile_numbers, _ = query_tree(available_tiles, np.array([obj_coord.ra.deg, obj_coord.dec.deg]), tile_info_dir)
         tiles_matching_catalog[i] = tile_numbers
+        # check how many bands are available for this tile
+        bands_tile, band_idx_tile = availability.get_availability(tile_numbers)
+        bands[i], n_bands[i] = bands_tile, len(band_idx_tile)
+        if bands_tile is None:
+            pix_coords[i] = np.nan, np.nan
+            continue
         wcs = TileWCS()
         wcs.set_coords(relate_coord_tile(nums=tile_numbers))
         pix_coord = skycoord_to_pixel(obj_coord, wcs.wcs_tile, origin=1)
@@ -104,10 +114,12 @@ def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):
     catalog['tile'] = tiles_matching_catalog
     catalog['x'] = pix_coords[:, 0]
     catalog['y'] = pix_coords[:, 1]
+    catalog['bands'] = bands
+    catalog['n_bands'] = n_bands
     unique_tiles = list(set(tiles_matching_catalog))
     tiles_x_bands = [tile for tile in unique_tiles if len(availability.get_availability(tile)[1]) >= band_constr]
 
-    return unique_tiles, tiles_x_bands
+    return unique_tiles, tiles_x_bands, catalog
 
 
 def download_tile_for_bands(availability, tile_numbers, in_dict, download_dir, method='api'):
@@ -248,7 +260,7 @@ def process_tile(availability, tile, catalog, id_key, ra_key, dec_key, cutout_di
     return cutout
 
 
-def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info_dir, in_dict, at_least_key, band_constr, download_dir, cutout_dir, figure_dir, size, h5_name, workers, update, show_stats, dl_tiles, build_kdtree, coordinates=None, dataframe_path=None, ra_key=None, dec_key=None, id_key=None, show_plt=False, save_plt=False):
+def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info_dir, in_dict, at_least_key, band_constr, download_dir, cutout_dir, figure_dir, table_dir, size, h5_name, workers, update, show_stats, dl_tiles, build_kdtree, coordinates=None, dataframe_path=None, ra_key=None, dec_key=None, id_key=None, show_plt=False, save_plt=False):
     # check if the coordinates are provided as a list of pairs of coordinates or as a DataFrame
     if coordinates is not None:
         coordinates = coordinates[0]
@@ -290,12 +302,26 @@ def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info
         availability.stats()
 
     # find the tiles the objects are in and check how many meet the band constraint
-    unique_tiles, tiles_x_bands = tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr)
-
-    # print information on the tile availability
-    for tile in unique_tiles:
-        bands = availability.get_availability(tile)[0]
-        print(f'Tile {tile} is available in {len(bands)} bands: {bands}')
+    unique_tiles, tiles_x_bands, catalog = tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr)
+    # print the number of unique tiles dwarfs are in
+    print(f'Number of tiles with known dwarfs: {len(unique_tiles)}')
+    # print the number of catalog entries with a tile number
+    print(f'Number of known dwarfs in the footprint: {len(catalog.loc[catalog.tile.notnull()])}/{len(catalog)}')
+    # print the number of tiles that meet the band constraint
+    print(f'Number of tiles with known dwarfs that meet the band constraint: {len(tiles_x_bands)}/{len(unique_tiles)}')
+    # print the number of dwarfs in the footprint that meet the band constraint
+    print(f'Number of known dwarfs in the footprint that meet the band constraint: '
+          f'{len(catalog.loc[catalog.n_bands >= band_constr])}/{len(catalog)}')
+    # print the number of dwarfs available in 5, 4, 3, 2, 1 bands
+    print(f'Number of known dwarfs in the footprint that are available in\n5 bands: {len(catalog.loc[catalog.n_bands == 5])}\n4 bands: {len(catalog.loc[catalog.n_bands == 4])}\n3 bands: {len(catalog.loc[catalog.n_bands == 3])}\n2 bands: {len(catalog.loc[catalog.n_bands == 2])}\n1 band: {len(catalog.loc[catalog.n_bands == 1])}')
+    # initialize a column of zeros for the cutout column
+    catalog['cutout'] = 0
+    
+    if print_per_tile_availability:
+        # print information on the tile availability
+        for tile in unique_tiles:
+            bands = availability.get_availability(tile)[0]
+            print(f'Tile {tile} is available in {len(bands)} bands: {bands}')
 
     # download the tiles
     if dl_tiles:
@@ -323,14 +349,18 @@ def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info
                 if cutout is not None:
                     total_cutouts_count += cutout.shape[0]
                     successful_tiles_count += 1
+                    catalog.loc[catalog['tile'] == tile, 'cutout'] = 1
             except Exception as e:
-                print(f"Failed to process tile {tile}: {str(e)}")
+                # print(f"Failed to process tile {tile}: {str(e)}")
                 failed_tiles.append(tile)
 
     print(f'\nProcessing report:\nTiles processed: {len(tiles_x_bands)}\nCutouts created: {total_cutouts_count}'
           f'\nTiles failed: {len(failed_tiles)}/{len(tiles_x_bands)}')
     if len(failed_tiles) != 0:
         print(f'Processing error in tiles: {failed_tiles}.')
+
+    # save the catalog
+    catalog.to_csv(os.path.join(table_dir, 'known_dwarfs_processed.csv'), index=False)
 
     # plot all cutouts or just a random one
     if with_plot:
@@ -377,6 +407,7 @@ if __name__ == "__main__":
         'download_dir': download_directory,
         'cutout_dir': cutout_directory,
         'figure_dir': figure_directory,
+        'table_dir': table_directory,
         'size': cutout_size,
         'h5_name': h5_filename,
         'workers': num_workers,
