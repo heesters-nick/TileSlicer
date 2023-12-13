@@ -60,7 +60,7 @@ save_plot = False
 parent_directory = '/home/nick/astro/TileSlicer/'
 table_directory = os.path.join(parent_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
-catalog_script = pd.read_csv(table_directory+'known_dwarfs.csv')
+catalog_script = pd.read_csv(table_directory+'smudges.csv')
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
 tile_info_directory = os.path.join(parent_directory, 'tile_info/')
@@ -279,7 +279,17 @@ def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info
     elif dataframe_path is not None:
         print(f'Dataframe received from command line.')
         catalog = pd.read_csv(dataframe_path)
+        # if no ra_key, dec_key, id_key are provided, use the default ones
+        if ra_key is None or dec_key is None or id_key is None:
+            ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
+        # check if the keys are in the DataFrame
+        if ra_key not in catalog.columns or dec_key not in catalog.columns or id_key not in catalog.columns:
+            print('One or more keys not found in the DataFrame. Please provide the correct keys '
+                  'for right ascention, declination and object ID \n'
+                  'if they are not equal to the default keys: ra, dec, ID.')
+            return
         coord_c = SkyCoord(catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs')
+
     else:
         print('No coordinates or DataFrame provided. Using coordinates from default DataFrame.')
         catalog = cat_default
