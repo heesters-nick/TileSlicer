@@ -60,7 +60,10 @@ save_plot = False
 parent_directory = '/home/nick/astro/TileSlicer/'
 table_directory = os.path.join(parent_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
-catalog_script = pd.read_csv(table_directory+'smudges.csv')
+# define catalog file
+catalog_file = 'all_known_dwarfs.csv'
+catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))
+# define the keys for ra, dec, and id in the catalog
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
 tile_info_directory = os.path.join(parent_directory, 'tile_info/')
@@ -368,9 +371,9 @@ def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info
           f'\nTiles failed: {len(failed_tiles)}/{len(tiles_x_bands)}')
     if len(failed_tiles) != 0:
         print(f'Processing error in tiles: {failed_tiles}.')
-
-    # save the catalog
-    catalog.to_csv(os.path.join(table_dir, 'known_dwarfs_processed.csv'), index=False)
+    
+    # save the catalog with the suffix 'processed'
+    catalog.to_csv(os.path.join(table_dir, catalog_file.split('.')[0] + '_processed.csv'), index=False)
 
     # plot all cutouts or just a random one
     if with_plot:
