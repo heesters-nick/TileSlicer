@@ -1,21 +1,32 @@
-import os
-import numpy as np
-import time
-import pandas as pd
 import argparse
-from astropy.io import fits
-from astropy.coordinates import SkyCoord
-from astropy.wcs.utils import skycoord_to_pixel
-from astropy.nddata.utils import Cutout2D
-from utils import update_available_tiles, extract_tile_numbers, load_available_tiles, TileAvailability, read_h5
-from kd_tree import query_tree, TileWCS, relate_coord_tile, build_tree
-from plotting import plot_cutout
 import concurrent.futures
-from concurrent.futures import ProcessPoolExecutor
-import h5py
-from datetime import timedelta
+import logging
+import os
 import random
+import subprocess
+import time
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from datetime import timedelta
+
+import h5py
+import numpy as np
+import pandas as pd
+from astropy.coordinates import SkyCoord
+from astropy.io import fits
+from astropy.nddata.utils import Cutout2D
+from astropy.wcs.utils import skycoord_to_pixel
 from vos import Client
+
+from kd_tree import TileWCS, build_tree, query_tree, relate_coord_tile
+from plotting import plot_cutout
+from utils import (
+    TileAvailability,
+    extract_tile_numbers,
+    load_available_tiles,
+    read_h5,
+    update_available_tiles,
+)
+
 client = Client()
 
 # To work with the client you need to get CANFAR X509 certificates
@@ -23,11 +34,53 @@ client = Client()
 # cadc-get-cert -u yourusername
 # cp ${HOME}/.ssl/cadcproxy.pem .
 
-band_dict = {'cfis-u': {'name': 'CFIS', 'band': 'u', 'vos': 'vos:cfis/tiles_DR5/', 'suffix': '.u.fits', 'delimiter': '.', 'fits_ext': 0},
-             'whigs-g': {'name': 'calexp-CFIS', 'band': 'g', 'vos': 'vos:cfis/whigs/stack_images_CFIS_scheme/', 'suffix': '.fits', 'delimiter': '_', 'fits_ext': 1},
-             'cfis_lsb-r': {'name': 'CFIS_LSB', 'band': 'r', 'vos': 'vos:cfis/tiles_LSB_DR5/', 'suffix': '.r.fits', 'delimiter': '.', 'fits_ext': 0},
-             'ps-i': {'name': 'PS-DR3', 'band': 'i', 'vos': 'vos:cfis/panstarrs/DR3/tiles/', 'suffix': '.i.fits', 'delimiter': '.', 'fits_ext': 0},
-             'wishes-z': {'name': 'WISHES', 'band': 'z', 'vos': 'vos:cfis/wishes_1/coadd/', 'suffix': '.z.fits', 'delimiter': '.', 'fits_ext': 1}}
+band_dict = {
+    'cfis-u': {
+        'name': 'CFIS',
+        'band': 'u',
+        'vos': 'vos:cfis/tiles_DR5/',
+        'suffix': '.u.fits',
+        'delimiter': '.',
+        'fits_ext': 0,
+        'zfill': 3,
+    },
+    'whigs-g': {
+        'name': 'calexp-CFIS',
+        'band': 'g',
+        'vos': 'vos:cfis/whigs/stack_images_CFIS_scheme/',
+        'suffix': '.fits',
+        'delimiter': '_',
+        'fits_ext': 1,
+        'zfill': 0,
+    },
+    'cfis_lsb-r': {
+        'name': 'CFIS_LSB',
+        'band': 'r',
+        'vos': 'vos:cfis/tiles_LSB_DR5/',
+        'suffix': '.r.fits',
+        'delimiter': '.',
+        'fits_ext': 0,
+        'zfill': 3,
+    },
+    'ps-i': {
+        'name': 'PS-DR3',
+        'band': 'i',
+        'vos': 'vos:cfis/panstarrs/DR3/tiles/',
+        'suffix': '.i.fits',
+        'delimiter': '.',
+        'fits_ext': 0,
+        'zfill': 3,
+    },
+    'wishes-z': {
+        'name': 'WISHES',
+        'band': 'z',
+        'vos': 'vos:cfis/wishes_1/coadd/',
+        'suffix': '.z.fits',
+        'delimiter': '.',
+        'fits_ext': 1,
+        'zfill': 0,
+    },
+}
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
 update_tiles = False
@@ -57,8 +110,8 @@ save_plot = False
 
 # paths
 # define the root directory
-parent_directory = '/home/nick/astro/TileSlicer/'
-table_directory = os.path.join(parent_directory, 'tables/')
+main_directory = '/home/nick/astro/TileSlicer/'
+table_directory = os.path.join(main_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
 # define catalog file
 catalog_file = 'all_known_dwarfs.csv'
@@ -66,21 +119,38 @@ catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))
 # define the keys for ra, dec, and id in the catalog
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
-tile_info_directory = os.path.join(parent_directory, 'tile_info/')
+tile_info_directory = os.path.join(main_directory, 'tile_info/')
 os.makedirs(tile_info_directory, exist_ok=True)
 # define where the tiles should be saved
-download_directory = os.path.join(parent_directory, 'data/')
+download_directory = os.path.join(main_directory, 'data/')
 os.makedirs(download_directory, exist_ok=True)
 # define where the cutouts should be saved
-cutout_directory = os.path.join(parent_directory, 'h5_files/')
+cutout_directory = os.path.join(main_directory, 'cutouts/')
 os.makedirs(cutout_directory, exist_ok=True)
 # define where figures should be saved
-figure_directory = os.path.join(parent_directory, 'figures/')
+figure_directory = os.path.join(main_directory, 'figures/')
 os.makedirs(figure_directory, exist_ok=True)
+# define where the logs should be saved
+log_dir = os.path.join(main_directory, 'logs/')
+os.makedirs(log_dir, exist_ok=True)
 
-# tile parameters
-cutout_size = 200
-h5_filename = 'cutout_stacks_ugriz_lsb_200x200'
+# define the logger
+log_file_name = 'tilecutter.log'
+log_file_path = os.path.join(log_dir, log_file_name)
+
+# Configure the logging module
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file_path, mode='w'),
+        logging.StreamHandler(),  # Add this line to also log to the console
+    ],
+)
+
+### tile parameters ###
+tile_batch_size = 6  # number of tiles to process in parallel
+cutout_size = 224
 num_workers = 9  # specifiy the number of parallel workers following machine capabilities
 
 
@@ -100,7 +170,11 @@ def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):
     bands = np.empty(len(catalog), dtype=object)
     n_bands = np.empty(len(catalog), dtype=np.int32)
     for i, obj_coord in enumerate(coord_c):
-        tile_numbers, _ = query_tree(available_tiles, np.array([obj_coord.ra.deg, obj_coord.dec.deg]), tile_info_dir)
+        tile_numbers, _ = query_tree(
+            available_tiles,
+            np.array([obj_coord.ra.deg, obj_coord.dec.deg]),
+            tile_info_dir,
+        )
         tiles_matching_catalog[i] = tile_numbers
         # check how many bands are available for this tile
         bands_tile, band_idx_tile = availability.get_availability(tile_numbers)
@@ -120,7 +194,9 @@ def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):
     catalog['bands'] = bands
     catalog['n_bands'] = n_bands
     unique_tiles = list(set(tiles_matching_catalog))
-    tiles_x_bands = [tile for tile in unique_tiles if len(availability.get_availability(tile)[1]) >= band_constr]
+    tiles_x_bands = [
+        tile for tile in unique_tiles if len(availability.get_availability(tile)[1]) >= band_constr
+    ]
 
     return unique_tiles, tiles_x_bands, catalog
 
@@ -136,33 +212,113 @@ def download_tile_for_bands(availability, tile_numbers, in_dict, download_dir, m
     :return: True/False if the download was successful/failed
     """
     avail_idx = availability.get_availability(tile_numbers)[1]
+    tile_dir = download_dir + f'{str(tile_numbers[0]).zfill(3)}_{str(tile_numbers[1]).zfill(3)}'
     for band in np.array(list(band_dict.keys()))[avail_idx]:
         vos_dir = in_dict[band]['vos']
         prefix = in_dict[band]['name']
         suffix = in_dict[band]['suffix']
         delimiter = in_dict[band]['delimiter']
-        tile_dir = download_dir + f'{tile_numbers[0]}_{tile_numbers[1]}'
+        zfill = in_dict[band]['zfill']
         os.makedirs(tile_dir, exist_ok=True)
-        tile_fitsfilename = f'{prefix}{delimiter}{tile_numbers[0]}{delimiter}{tile_numbers[1]}{suffix}'
+        tile_fitsfilename = f'{prefix}{delimiter}{str(tile_numbers[0]).zfill(zfill)}{delimiter}{str(tile_numbers[1]).zfill(zfill)}{suffix}'
         # use a temporary name while the file is downloading
         temp_name = '.'.join(tile_fitsfilename.split('.')[:-1]) + '_temp.fits'
 
         # Check if the directory exists, and create it if not
         if os.path.exists(os.path.join(tile_dir, tile_fitsfilename)):
-            print(f'File {tile_fitsfilename} was already downloaded.')
+            logging.info(f'File {tile_fitsfilename} was already downloaded.')
         else:
-            print(f'Downloading {tile_fitsfilename}..')
+            logging.info(f'Downloading {tile_fitsfilename}..')
             try:
                 if method == 'command':
                     # command line
-                    os.system(f'vcp -v {vos_dir + tile_fitsfilename} {os.path.join(tile_dir, temp_name)}')
+                    os.system(
+                        f'vcp -v {vos_dir + tile_fitsfilename} {os.path.join(tile_dir, temp_name)}'
+                    )
                 else:
                     # API
-                    client.copy(os.path.join(vos_dir, tile_fitsfilename), os.path.join(tile_dir, temp_name))
-                os.rename(os.path.join(tile_dir, temp_name), os.path.join(tile_dir, tile_fitsfilename))
+                    client.copy(
+                        os.path.join(vos_dir, tile_fitsfilename),
+                        os.path.join(tile_dir, temp_name),
+                    )
+                os.rename(
+                    os.path.join(tile_dir, temp_name),
+                    os.path.join(tile_dir, tile_fitsfilename),
+                )
             except Exception as e:
-                print(e)
+                logging.exception(e)
                 return False
+    return True
+
+
+def download_tile_one_band(tile_numbers, tile_fitsname, final_path, temp_path, vos_path, band):
+    if os.path.exists(final_path):
+        logging.info(f'File {tile_fitsname} was already downloaded for band {band}.')
+        return True
+
+    try:
+        logging.info(f'Downloading {tile_fitsname} for band {band}...')
+        start_time = time.time()
+        result = subprocess.run(
+            f'vcp -v {vos_path} {temp_path}', shell=True, stderr=subprocess.PIPE, text=True
+        )
+
+        result.check_returncode()
+
+        os.rename(temp_path, final_path)
+        logging.info(f'Successfully downloaded tile {tuple(tile_numbers)} for band {band}.')
+        logging.info(f'Finished in {np.round((time.time()-start_time)/60, 3)} minutes.')
+        return True
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f'Failed downloading tile {tuple(tile_numbers)} for band {band}.')
+        logging.error(f'Subprocess error details: {e}')
+        return False
+
+    except FileNotFoundError:
+        logging.error(f'Failed downloading tile {tuple(tile_numbers)} for band {band}.')
+        logging.exception(f'Tile {tuple(tile_numbers)} not available in {band}.')
+        return False
+
+    except Exception as e:
+        logging.error(f'Tile {tuple(tile_numbers)} in {band}: an unexpected error occurred: {e}')
+        return False
+
+
+def download_tile_for_bands_parallel(availability, tile_nums, in_dict, download_dir):
+    avail_idx = availability.get_availability(tile_nums)[1]
+    with ThreadPoolExecutor() as executor:
+        # Create a list of futures for concurrent downloads
+        futures = []
+        for band in np.array(list(band_dict.keys()))[avail_idx]:
+            vos_dir = in_dict[band]['vos']
+            prefix = in_dict[band]['name']
+            suffix = in_dict[band]['suffix']
+            delimiter = in_dict[band]['delimiter']
+            zfill = in_dict[band]['zfill']
+            tile_dir = download_dir + f'{str(tile_nums[0]).zfill(3)}_{str(tile_nums[1]).zfill(3)}'
+            os.makedirs(tile_dir, exist_ok=True)
+            tile_fitsfilename = f'{prefix}{delimiter}{str(tile_nums[0]).zfill(zfill)}{delimiter}{str(tile_nums[1]).zfill(zfill)}{suffix}'
+            temp_name = '.'.join(tile_fitsfilename.split('.')[:-1]) + '_temp.fits'
+            temp_path = os.path.join(tile_dir, temp_name)
+            final_path = os.path.join(tile_dir, tile_fitsfilename)
+            vos_path = os.path.join(vos_dir, tile_fitsfilename)
+
+            future = executor.submit(
+                download_tile_one_band,
+                tile_nums,
+                tile_fitsfilename,
+                final_path,
+                temp_path,
+                vos_path,
+                band,
+            )
+            futures.append(future)
+
+        # Wait for all downloads to complete
+        for future in futures:
+            future.result()
+
     return True
 
 
@@ -175,9 +331,12 @@ def make_cutout(data, x, y, size):
     :param size: cutout size in pixels
     :return: cutout, 2d array
     """
-    img_cutout = Cutout2D(data, (x, y), size, mode="partial", fill_value=0).data
+    img_cutout = Cutout2D(data, (x, y), size, mode='partial', fill_value=0).data
 
-    if np.count_nonzero(np.isnan(img_cutout)) >= 0.05 * size ** 2 or np.count_nonzero(img_cutout) == 0:
+    if (
+        np.count_nonzero(np.isnan(img_cutout)) >= 0.05 * size**2
+        or np.count_nonzero(img_cutout) == 0
+    ):
         return np.zeros((size, size))  # Don't use this cutout
 
     img_cutout[np.isnan(img_cutout)] = 0
@@ -198,15 +357,16 @@ def make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dic
     """
     avail_idx = availability.get_availability(tile)[1]
     cutout = np.zeros((len(obj_in_tile), len(in_dict), size, size))
-    tile_dir = download_dir+f'{tile[0]}_{tile[1]}'
+    tile_dir = download_dir + f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
     for j, band in enumerate(np.array(list(in_dict.keys()))[avail_idx]):
         prefix = in_dict[band]['name']
         suffix = in_dict[band]['suffix']
         delimiter = in_dict[band]['delimiter']
         fits_ext = in_dict[band]['fits_ext']
-        tile_fitsfilename = f'{prefix}{delimiter}{tile[0]}{delimiter}{tile[1]}{suffix}'
+        zfill = in_dict[band]['zfill']
+        tile_fitsfilename = f'{prefix}{delimiter}{str(tile[0]).zfill(zfill)}{delimiter}{str(tile[1]).zfill(zfill)}{suffix}'
         with fits.open(os.path.join(tile_dir, tile_fitsfilename), memmap=True) as hdul:
-            data = hdul[fits_ext].data
+            data = hdul[fits_ext].data  # type: ignore
         for i, (x, y) in enumerate(zip(obj_in_tile.x.values, obj_in_tile.y.values)):
             cutout[i, j] = make_cutout(data, x, y, size)
     return cutout
@@ -215,15 +375,19 @@ def make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dic
 def save_to_h5(stacked_cutout, tile_numbers, ids, ras, decs, save_path):
     """
     Save cutout data including metadata to file.
-    :param stacked_cutout: stacked numpy array of the image data in different bands
-    :param tile_numbers: tile numbers
-    :param ids: object IDs
-    :param ras: right ascension coordinate array
-    :param decs: declination coordinate array
-    :param save_path: save path
-    :return: pass
+
+    Args:
+        stacked_cutout (numpy.ndarray): stacked numpy array of the image data in different bands
+        tile_numbers (tuple): tile numbers
+        ids (list): object IDs
+        ras (numpy.ndarray): right ascension coordinate array
+        decs (numpy.ndarray): declination coordinate array
+        save_path (str): path to save the cutout
+
+    Returns:
+        None
     """
-    print('Saving file: {}'.format(save_path))
+    logging.info(f'Saving file: {save_path}')
     dt = h5py.special_dtype(vlen=str)
     with h5py.File(save_path, 'w', libver='latest') as hf:
         hf.create_dataset('images', data=stacked_cutout.astype(np.float32))
@@ -234,7 +398,18 @@ def save_to_h5(stacked_cutout, tile_numbers, ids, ras, decs, save_path):
     pass
 
 
-def process_tile(availability, tile, catalog, id_key, ra_key, dec_key, cutout_dir, h5_name, download_dir, in_dict, size):
+def process_tile(
+    availability,
+    tile,
+    catalog,
+    id_key,
+    ra_key,
+    dec_key,
+    cutout_dir,
+    download_dir,
+    in_dict,
+    size,
+):
     """
     Process a tile, create cutouts in all bands, save cutouts and metadata to hdf5 file
     :param availability: object to retrieve available tiles
@@ -244,60 +419,119 @@ def process_tile(availability, tile, catalog, id_key, ra_key, dec_key, cutout_di
     :param ra_key: ra key in the catalog
     :param dec_key: dec key in the catalog
     :param cutout_dir: cutout directory
-    :param h5_name: hdf5 file name
     :param download_dir: tile directory
     :param in_dict: band dictionary
     :param size: cutout size
     :return image cutout in available bands, array with shape: (n_bands, cutout_size, cutout_size)
     """
-    save_path = os.path.join(cutout_dir, h5_name + f'_{tile[0]}_{tile[1]}.h5')
-
+    avail_bands = ''.join(availability.get_availability(tile)[0])
+    save_path = os.path.join(
+        cutout_dir,
+        f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
+    )
     # check if the tile has already been processed
     if os.path.exists(save_path):
-        print(f'Tile {tile} has already been processed.')
+        logging.info(f'Tile {tile} has already been processed.')
         return None
-    
+
     obj_in_tile = catalog.loc[catalog['tile'] == tile]
     cutout = make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dict, size)
-    save_to_h5(cutout, tile, obj_in_tile[id_key].values, obj_in_tile[ra_key].values, obj_in_tile[dec_key].values, save_path)
+    save_to_h5(
+        cutout,
+        tile,
+        obj_in_tile[id_key].values,
+        obj_in_tile[ra_key].values,
+        obj_in_tile[dec_key].values,
+        save_path,
+    )
     return cutout
 
 
-def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info_dir, in_dict, at_least_key, band_constr, download_dir, cutout_dir, figure_dir, table_dir, size, h5_name, workers, update, show_stats, dl_tiles, build_kdtree, coordinates=None, dataframe_path=None, ra_key=None, dec_key=None, id_key=None, show_plt=False, save_plt=False):
+def process_tiles_in_batches(tile_list, batch_size):
+    for i in range(0, len(tile_list), batch_size):
+        yield tile_list[i : i + batch_size]
+
+
+def main(
+    cat_default,
+    ra_key_default,
+    dec_key_default,
+    id_key_default,
+    tile_info_dir,
+    in_dict,
+    at_least_key,
+    band_constr,
+    download_dir,
+    cutout_dir,
+    figure_dir,
+    table_dir,
+    batch_size,
+    size,
+    workers,
+    update,
+    show_stats,
+    dl_tiles,
+    build_kdtree,
+    coordinates=None,
+    dataframe_path=None,
+    ra_key=None,
+    dec_key=None,
+    id_key=None,
+    show_plt=False,
+    save_plt=False,
+):
     # check if the coordinates are provided as a list of pairs of coordinates or as a DataFrame
     if coordinates is not None:
         coordinates = coordinates[0]
         if (len(coordinates) == 0) or len(coordinates) % 2 != 0:
             raise ValueError('Provide even number of coordinates.')
-        ras, decs, ids = coordinates[::2], coordinates[1::2], list(np.arange(1, len(coordinates)//2 + 1))
+        ras, decs, ids = (
+            coordinates[::2],
+            coordinates[1::2],
+            list(np.arange(1, len(coordinates) // 2 + 1)),
+        )
         ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
         df_coordinates = pd.DataFrame({id_key: ids, ra_key: ras, dec_key: decs})
 
-        formatted_coordinates = " ".join([f"({ra}, {dec})" for ra, dec in zip(ras, decs)])
-        print(f'Coordinates received from the command line: {formatted_coordinates}')
+        formatted_coordinates = ' '.join([f'({ra}, {dec})' for ra, dec in zip(ras, decs)])
+        logging.info(f'Coordinates received from the command line: {formatted_coordinates}')
 
         catalog = df_coordinates
         df_coordinates.to_csv('df_coordinates_test.csv', index=False)
-        coord_c = SkyCoord(catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs')
+        coord_c = SkyCoord(
+            catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs'
+        )
     elif dataframe_path is not None:
-        print(f'Dataframe received from command line.')
+        logging.info('Dataframe received from command line.')
         catalog = pd.read_csv(dataframe_path)
         # if no ra_key, dec_key, id_key are provided, use the default ones
         if ra_key is None or dec_key is None or id_key is None:
             ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
         # check if the keys are in the DataFrame
-        if ra_key not in catalog.columns or dec_key not in catalog.columns or id_key not in catalog.columns:
-            print('One or more keys not found in the DataFrame. Please provide the correct keys '
-                  'for right ascention, declination and object ID \n'
-                  'if they are not equal to the default keys: ra, dec, ID.')
+        if (
+            ra_key not in catalog.columns
+            or dec_key not in catalog.columns
+            or id_key not in catalog.columns
+        ):
+            logging.error(
+                'One or more keys not found in the DataFrame. Please provide the correct keys '
+                'for right ascention, declination and object ID \n'
+                'if they are not equal to the default keys: ra, dec, ID.'
+            )
             return
-        coord_c = SkyCoord(catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs')
+        coord_c = SkyCoord(
+            catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs'
+        )
 
     else:
-        print('No coordinates or DataFrame provided. Using coordinates from default DataFrame.')
+        logging.info(
+            'No coordinates or DataFrame provided. Using coordinates from default DataFrame.'
+        )
         catalog = cat_default
         ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
-        coord_c = SkyCoord(catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs')
+        coord_c = SkyCoord(
+            catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs'
+        )
     # update information on the currently available tiles
     if update:
         update_available_tiles(tile_info_dir)
@@ -315,96 +549,150 @@ def main(cat_default, ra_key_default, dec_key_default, id_key_default, tile_info
         availability.stats()
 
     # find the tiles the objects are in and check how many meet the band constraint
-    unique_tiles, tiles_x_bands, catalog = tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr)
-    # print the number of unique tiles dwarfs are in
-    print(f'Number of tiles with known dwarfs: {len(unique_tiles)}')
-    # print the number of catalog entries with a tile number
-    print(f'Number of known dwarfs in the footprint: {len(catalog.loc[catalog.tile.notnull()])}/{len(catalog)}')
-    # print the number of tiles that meet the band constraint
-    print(f'Number of tiles with known dwarfs that meet the band constraint: {len(tiles_x_bands)}/{len(unique_tiles)}')
-    # print the number of dwarfs in the footprint that meet the band constraint
-    print(f'Number of known dwarfs in the footprint that meet the band constraint: '
-          f'{len(catalog.loc[catalog.n_bands >= band_constr])}/{len(catalog)}')
-    # print the number of dwarfs available in 5, 4, 3, 2, 1 bands
-    print(f'Number of known dwarfs in the footprint that are available in\n5 bands: {len(catalog.loc[catalog.n_bands == 5])}\n4 bands: {len(catalog.loc[catalog.n_bands == 4])}\n3 bands: {len(catalog.loc[catalog.n_bands == 3])}\n2 bands: {len(catalog.loc[catalog.n_bands == 2])}\n1 band: {len(catalog.loc[catalog.n_bands == 1])}')
+    unique_tiles, tiles_x_bands, catalog = tile_finder(
+        availability, catalog, coord_c, tile_info_dir, band_constr
+    )
+    # log the number of unique tiles dwarfs are in
+    logging.info(f'Number of tiles with detected objects: {len(unique_tiles)}')
+    # log the number of catalog entries with a tile number
+    logging.info(
+        f'Total number of objects in the footprint: {len(catalog.loc[catalog.tile.notnull()])}/{len(catalog)}'
+    )
+    # log the number of tiles that meet the band constraint
+    logging.info(
+        f'Number of tiles with detected objects that meet the band constraint: {len(tiles_x_bands)}/{len(unique_tiles)}'
+    )
+    # log the number of dwarfs in the footprint that meet the band constraint
+    logging.info(
+        f'Number of detected objects in the footprint that meet the band constraint: '
+        f'{len(catalog.loc[catalog.n_bands >= band_constr])}/{len(catalog)}'
+    )
+    # log the number of dwarfs available in 5, 4, 3, 2, 1 bands
+    logging.info(
+        f'Number of objects in the footprint that are available in\n5 bands: {len(catalog.loc[catalog.n_bands == 5])}\n4 bands: {len(catalog.loc[catalog.n_bands == 4])}\n3 bands: {len(catalog.loc[catalog.n_bands == 3])}\n2 bands: {len(catalog.loc[catalog.n_bands == 2])}\n1 band: {len(catalog.loc[catalog.n_bands == 1])}'
+    )
     # initialize a column of zeros for the cutout column
     catalog['cutout'] = 0
-    
+
     if print_per_tile_availability:
-        # print information on the tile availability
+        # log information on the tile availability
         for tile in unique_tiles:
             bands = availability.get_availability(tile)[0]
-            print(f'Tile {tile} is available in {len(bands)} bands: {bands}')
+            logging.info(f'Tile {tile} is available in {len(bands)} bands: {bands}')
 
-    # download the tiles
-    if dl_tiles:
-        print('Downloading the tiles in the available bands..')
-        start_download = time.time()
-        for tile in tiles_x_bands:
-            if download_tile_for_bands(availability, tile, in_dict, download_dir, method='command'):
-                print(f'Tile downloaded in all available bands. Took {(time.time() - start_download) / 60} minutes.')
+    total_batches = len(tiles_x_bands) // batch_size + (
+        1 if len(tiles_x_bands) % batch_size != 0 else 0
+    )
 
-    # log tile processing
-    successful_tiles_count = 0
-    total_cutouts_count = 0
-    failed_tiles = []
+    # process the tiles in batches
+    for tile_idx, tile_batch in enumerate(
+        process_tiles_in_batches(tiles_x_bands, batch_size), start=1
+    ):
+        logging.info(f'Processing batch: {tile_idx}/{total_batches}')
+        start_batch_time = time.time()
 
-    # process the tiles in parallel
-    with ProcessPoolExecutor(max_workers=workers) as executor:
-        future_to_tile = {
-            executor.submit(process_tile, availability, tile, catalog, id_key, ra_key, dec_key, cutout_dir, h5_name, download_dir,
-                            in_dict, size): tile for tile in tiles_x_bands}
+        # download the tiles
+        if dl_tiles:
+            logging.info('Downloading the tiles in the available bands..')
+            start_download = time.time()
+            for tile in tile_batch:
+                if download_tile_for_bands_parallel(availability, tile, in_dict, download_dir):
+                    logging.info(
+                        f'Tile downloaded in all available bands. Took {(time.time() - start_download) / 60} minutes.'
+                    )
+                else:
+                    logging.info(f'Tile {tile} failed to download.')
 
-        for future in concurrent.futures.as_completed(future_to_tile):
-            tile = future_to_tile[future]
-            try:
-                cutout = future.result()
-                if cutout is not None:
-                    total_cutouts_count += cutout.shape[0]
-                    successful_tiles_count += 1
-                    catalog.loc[catalog['tile'] == tile, 'cutout'] = 1
-            except Exception as e:
-                # print(f"Failed to process tile {tile}: {str(e)}")
-                failed_tiles.append(tile)
+        # log tile processing
+        successful_tiles_count = 0
+        total_cutouts_count = 0
+        failed_tiles = []
 
-    print(f'\nProcessing report:\nTiles processed: {len(tiles_x_bands)}\nCutouts created: {total_cutouts_count}'
-          f'\nTiles failed: {len(failed_tiles)}/{len(tiles_x_bands)}')
-    if len(failed_tiles) != 0:
-        print(f'Processing error in tiles: {failed_tiles}.')
-    
+        # process the tiles in parallel
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            future_to_tile = {
+                executor.submit(
+                    process_tile,
+                    availability,
+                    tile,
+                    catalog,
+                    id_key,
+                    ra_key,
+                    dec_key,
+                    cutout_dir,
+                    download_dir,
+                    in_dict,
+                    size,
+                ): tile
+                for tile in tile_batch
+            }
+
+            for future in concurrent.futures.as_completed(future_to_tile):
+                tile = future_to_tile[future]
+                try:
+                    cutout = future.result()
+                    if cutout is not None:
+                        total_cutouts_count += cutout.shape[0]
+                        successful_tiles_count += 1
+                        catalog.loc[catalog['tile'] == tile, 'cutout'] = 1
+                except Exception as e:
+                    logging.exception(f'Failed to process tile {tile}: {str(e)}')
+                    failed_tiles.append(tile)
+
+        logging.info(
+            f'\nProcessing report:\nTiles processed: {len(tile_batch)}\nCutouts created: {total_cutouts_count}'
+            f'\nTiles failed: {len(failed_tiles)}/{len(tile_batch)}'
+        )
+        if len(failed_tiles) != 0:
+            logging.info(f'Processing error in tiles: {failed_tiles}.')
+
+        logging.info(f'Batch processing time: {(time.time() - start_batch_time) / 60} minutes.')
+
     # save the catalog with the suffix 'processed'
-    catalog.to_csv(os.path.join(table_dir, catalog_file.split('.')[0] + '_processed.csv'), index=False)
-
+    catalog.to_csv(
+        os.path.join(table_dir, catalog_file.split('.')[0] + '_processed.csv'),
+        index=False,
+    )
     # plot all cutouts or just a random one
     if with_plot:
         if plot_random_cutout:
             random_tile_index = random.randint(0, len(tiles_x_bands))
-            cutout_path = os.path.join(cutout_dir, h5_name +
-                                        f'_{tiles_x_bands[random_tile_index][0]}_{tiles_x_bands[random_tile_index][1]}.h5')
+            avail_bands = ''.join(
+                availability.get_availability(tiles_x_bands[random_tile_index])[0]
+            )
+            cutout_path = os.path.join(
+                cutout_dir,
+                f'{str(tiles_x_bands[random_tile_index][0]).zfill(3)}_{str(tiles_x_bands[random_tile_index][1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
+            )
             cutout = read_h5(cutout_path)
             plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
 
         for idx in range(len(tiles_x_bands)):
-            cutout_path = os.path.join(cutout_dir, h5_name +
-                                       f'_{tiles_x_bands[idx][0]}_{tiles_x_bands[idx][1]}.h5')
+            avail_bands = ''.join(availability.get_availability(tiles_x_bands[idx])[0])
+            cutout_path = os.path.join(
+                cutout_dir,
+                f'{str(tiles_x_bands[idx][0]).zfill(3)}_{str(tiles_x_bands[idx][1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
+            )
             cutout = read_h5(cutout_path)
 
             plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # parse command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--coordinates', nargs='+', type=float, action='append', metavar=('ra', 'dec'),
-                        help='list of pairs of coordinates to make cutouts from')
-    parser.add_argument('--dataframe', type=str,
-                        help='path to a CSV file containing the DataFrame')
-    parser.add_argument('--ra_key', type=str,
-                        help='right ascension key in the DataFrame')
-    parser.add_argument('--dec_key', type=str,
-                        help='declination key in the DataFrame')
-    parser.add_argument('--id_key', type=str,
-                        help='id key in the DataFrame')
+    parser.add_argument(
+        '--coordinates',
+        nargs='+',
+        type=float,
+        action='append',
+        metavar=('ra', 'dec'),
+        help='list of pairs of coordinates to make cutouts from',
+    )
+    parser.add_argument('--dataframe', type=str, help='path to a CSV file containing the DataFrame')
+    parser.add_argument('--ra_key', type=str, help='right ascension key in the DataFrame')
+    parser.add_argument('--dec_key', type=str, help='declination key in the DataFrame')
+    parser.add_argument('--id_key', type=str, help='id key in the DataFrame')
     args = parser.parse_args()
 
     # define the arguments for the main function
@@ -421,8 +709,8 @@ if __name__ == "__main__":
         'cutout_dir': cutout_directory,
         'figure_dir': figure_directory,
         'table_dir': table_directory,
+        'batch_size': tile_batch_size,
         'size': cutout_size,
-        'h5_name': h5_filename,
         'workers': num_workers,
         'update': update_tiles,
         'show_stats': show_tile_statistics,
@@ -434,13 +722,17 @@ if __name__ == "__main__":
         'dec_key': args.dec_key,
         'id_key': args.id_key,
         'show_plt': show_plot,
-        'save_plt': save_plot
+        'save_plt': save_plot,
     }
 
     start = time.time()
     main(**arg_dict_main)
     end = time.time()
-    elapsed = end-start
+    elapsed = end - start
     elapsed_string = str(timedelta(seconds=elapsed))
-    hours, minutes, seconds = elapsed_string.split(':')[0], elapsed_string.split(':')[1], elapsed_string.split(':')[2]
-    print(f'Done! Execution took {hours} hours, {minutes} minutes, and {seconds} seconds.')
+    hours, minutes, seconds = (
+        elapsed_string.split(':')[0],
+        elapsed_string.split(':')[1],
+        elapsed_string.split(':')[2],
+    )
+    logging.info(f'Done! Execution took {hours} hours, {minutes} minutes, and {seconds} seconds.')

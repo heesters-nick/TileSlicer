@@ -1,7 +1,8 @@
 # Ignore these files and folders
 data/
+data_test/
 figures/
-h5_files/
+cutouts/
 __pycache__/
 TileSlicer.code-workspace
 notebooks/.ipynb_checkpoints/

@@ -10,4 +10,5 @@ ipympl
 ipywidgets
 astroquery
 joblib
+scikit-image
 vos  # run pip install -U vos
