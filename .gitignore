@@ -8,3 +8,4 @@ TileSlicer.code-workspace
 notebooks/.ipynb_checkpoints/
 .vscode/
 .idea/
+ruff.toml

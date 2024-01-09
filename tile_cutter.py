@@ -92,21 +92,21 @@ else:
 # return the number of available tiles that are available in at least 5, 4, 3, 2, 1 bands
 at_least = False
 # show stats on currently available tiles, remember to update
-show_tile_statistics = False
+show_tile_statistics = True
 # define the minimum number of bands that should be available for a tile
 band_constraint = 3
 # print per tile availability
 print_per_tile_availability = False
 # download the tiles
-download_tiles = False
+download_tiles = True
 # Plot cutouts from one of the tiles after execution
-with_plot = False
+with_plot = True
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
-plot_random_cutout = False
+plot_random_cutout = True
 # Show plot
 show_plot = False
 # Save plot
-save_plot = False
+save_plot = True
 
 # paths
 # define the root directory
@@ -170,7 +170,7 @@ def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):
     bands = np.empty(len(catalog), dtype=object)
     n_bands = np.empty(len(catalog), dtype=np.int32)
     for i, obj_coord in enumerate(coord_c):
-        tile_numbers, _ = query_tree(
+        tile_numbers = query_tree(
             available_tiles,
             np.array([obj_coord.ra.deg, obj_coord.dec.deg]),
             tile_info_dir,
@@ -179,7 +179,7 @@ def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):
         # check how many bands are available for this tile
         bands_tile, band_idx_tile = availability.get_availability(tile_numbers)
         bands[i], n_bands[i] = bands_tile, len(band_idx_tile)
-        if bands_tile is None:
+        if (not bands_tile) or (tile_numbers is None):
             pix_coords[i] = np.nan, np.nan
             continue
         wcs = TileWCS()
@@ -648,34 +648,34 @@ def main(
 
         logging.info(f'Batch processing time: {(time.time() - start_batch_time) / 60} minutes.')
 
-    # save the catalog with the suffix 'processed'
-    catalog.to_csv(
-        os.path.join(table_dir, catalog_file.split('.')[0] + '_processed.csv'),
-        index=False,
-    )
-    # plot all cutouts or just a random one
-    if with_plot:
-        if plot_random_cutout:
-            random_tile_index = random.randint(0, len(tiles_x_bands))
-            avail_bands = ''.join(
-                availability.get_availability(tiles_x_bands[random_tile_index])[0]
-            )
-            cutout_path = os.path.join(
-                cutout_dir,
-                f'{str(tiles_x_bands[random_tile_index][0]).zfill(3)}_{str(tiles_x_bands[random_tile_index][1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
-            )
-            cutout = read_h5(cutout_path)
-            plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
+        # save the catalog with the suffix 'processed'
+        catalog.to_csv(
+            os.path.join(table_dir, catalog_file.split('.')[0] + '_processed_test.csv'),
+            index=False,
+        )
+        # plot all cutouts or just a random one
+        if with_plot:
+            if plot_random_cutout:
+                random_tile_index = random.randint(0, len(tile_batch))
+                avail_bands = ''.join(
+                    availability.get_availability(tile_batch[random_tile_index])[0]
+                )
+                cutout_path = os.path.join(
+                    cutout_dir,
+                    f'{str(tile_batch[random_tile_index][0]).zfill(3)}_{str(tile_batch[random_tile_index][1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
+                )
+                cutout = read_h5(cutout_path)
+                plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
 
-        for idx in range(len(tiles_x_bands)):
-            avail_bands = ''.join(availability.get_availability(tiles_x_bands[idx])[0])
-            cutout_path = os.path.join(
-                cutout_dir,
-                f'{str(tiles_x_bands[idx][0]).zfill(3)}_{str(tiles_x_bands[idx][1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
-            )
-            cutout = read_h5(cutout_path)
+            for idx in range(len(tile_batch)):
+                avail_bands = ''.join(availability.get_availability(tile_batch[idx])[0])
+                cutout_path = os.path.join(
+                    cutout_dir,
+                    f'{str(tile_batch[idx][0]).zfill(3)}_{str(tile_batch[idx][1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
+                )
+                cutout = read_h5(cutout_path)
 
-            plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
+                plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
 
 
 if __name__ == '__main__':
