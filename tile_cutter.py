@@ -678,8 +678,8 @@ def main(
         # download the tiles
         if dl_tiles:
             logging.info('Downloading the tiles in the available bands..')
-            start_download = time.time()
             for tile in tile_batch:
+                start_download = time.time()
                 if download_tile_for_bands_parallel(availability, tile, in_dict, download_dir):
                     logging.info(
                         f'Tile downloaded in all available bands. Took {(time.time() - start_download) / 60} minutes.'
