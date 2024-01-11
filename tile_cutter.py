@@ -97,8 +97,6 @@ else:
 at_least = False
 # show stats on currently available tiles, remember to update
 show_tile_statistics = True
-# define the minimum number of bands that should be available for a tile
-band_constraint = 3
 # print per tile availability
 print_per_tile_availability = False
 # use UNIONS catalogs to make the cutouts
@@ -116,7 +114,7 @@ save_plot = True
 
 # paths
 # define the root directory
-main_directory = '/home/nick/astro/TileSlicer/'
+main_directory = '/arc/home/heestersnick/tileslicer/'
 table_directory = os.path.join(main_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
 # define UNIONS table directory
@@ -175,7 +173,8 @@ logging.basicConfig(
 )
 
 ### tile parameters ###
-tile_batch_size = 6  # number of tiles to process in parallel
+band_constraint = 3  # define the minimum number of bands that should be available for a tile
+tile_batch_size = 2  # number of tiles to process in parallel
 cutout_size = 224
 num_workers = 9  # specifiy the number of parallel workers following machine capabilities
 
@@ -381,6 +380,7 @@ def make_cutout(data, x, y, size):
     :param size: cutout size in pixels
     :return: cutout, 2d array
     """
+    # logging.info('Cutting..')
     img_cutout = Cutout2D(data, (x, y), size, mode='partial', fill_value=0).data
 
     if (
@@ -390,7 +390,7 @@ def make_cutout(data, x, y, size):
         return np.zeros((size, size))  # Don't use this cutout
 
     img_cutout[np.isnan(img_cutout)] = 0
-
+    # logging.info('Cutting finished.')
     return img_cutout
 
 
@@ -405,6 +405,7 @@ def make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dic
     :param size: square cutout size in pixels
     :return: updated band dictionary containing cutout data
     """
+    logging.info(f'Cutting out objects in tile {tile}.')
     avail_idx = availability.get_availability(tile)[1]
     cutout = np.zeros((len(obj_in_tile), len(in_dict), size, size))
     tile_dir = download_dir + f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
@@ -419,6 +420,11 @@ def make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dic
             data = hdul[fits_ext].data  # type: ignore
         for i, (x, y) in enumerate(zip(obj_in_tile.x.values, obj_in_tile.y.values)):
             cutout[i, j] = make_cutout(data, x, y, size)
+            if tile == (247, 255):
+                logging.info(f'Cut {i}/{len(obj_in_tile.x.values)} objects.')
+    logging.info(f'Finished cutting objects in tile {tile}.')
+    if cutout is not None:
+        logging.info(f'Cutout stack for tile {tile} is not empty.')
     return cutout
 
 
@@ -493,8 +499,8 @@ def process_tile(
         obj_in_tile = read_unions_cat(unions_table_dir, tile)
         dwarfs_in_tile = catalog.loc[catalog['tile'] == tile]
         obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat)
-        obj_in_tile['tile'] = tile
-        obj_in_tile['bands'] = avail_bands
+        obj_in_tile['tile'] = str(tile)
+        obj_in_tile['bands'] = str(avail_bands)
 
     else:
         obj_in_tile = catalog.loc[catalog['tile'] == tile]
@@ -693,7 +699,7 @@ def main(
         failed_tiles = []
 
         # process the tiles in parallel
-        with ProcessPoolExecutor(max_workers=workers) as executor:
+        with ProcessPoolExecutor() as executor:
             future_to_tile = {
                 executor.submit(
                     process_tile,

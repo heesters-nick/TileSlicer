@@ -245,7 +245,9 @@ def get_numbers_from_folders(unions_table_dir):
         if os.path.isdir(folder_full_path):
             try:
                 numbers_tuple = tuple(map(int, folder_name.split('.')[1:3]))
-                tile_list.append(numbers_tuple)
+                # not all folders contain detection catalogs
+                if os.path.exists(os.path.join(folder_full_path, folder_name+'_ugri_photoz_ext.cat')):
+                    tile_list.append(numbers_tuple)
             except ValueError:
                 # Handle the case where the folder name doesn't match the expected format
                 logging.error(
@@ -266,10 +268,11 @@ def read_unions_cat(unions_table_dir, tile_nums):
     Returns:
         cat (dataframe): pandas dataframe containing the UNIONS catalog for the specified tile
     """
+    logging.info(f'Reading UNIONS catalog for tile {tile_nums}')
     df = Table.read(
         os.path.join(
             unions_table_dir,
-            f'UNIONS.{str(tile_nums[0]).zfill(3)}.{str(tile_nums[1]).zfill(3)}_ugri_photoz_ext.cat',
+            f'UNIONS.{str(tile_nums[0]).zfill(3)}.{str(tile_nums[1]).zfill(3)}',
             f'UNIONS.{str(tile_nums[0]).zfill(3)}.{str(tile_nums[1]).zfill(3)}_ugri_photoz_ext.cat',
         ),
         hdu=1,
@@ -285,6 +288,8 @@ def read_unions_cat(unions_table_dir, tile_nums):
             'MAG_GAAP_r': 'mag_r',
         }
     )
+    df = df[:5000]
+    logging.info(f'Read {len(df)} objects from UNIONS catalog for tile {tile_nums}')
     return df
 
 
@@ -315,7 +320,7 @@ def match_cats(df_det, df_label, max_sep=15.0):
     return det_matching_idx, label_matches, label_unmatches, det_matches
 
 
-def read_parquet(parquet_path, ra_key, dec_key, ra_range, dec_range, columns=None):
+def read_parquet(parquet_path, ra_range, dec_range, columns=None):
     """
     Read parquet file and return a pandas dataframe.
 
@@ -328,15 +333,17 @@ def read_parquet(parquet_path, ra_key, dec_key, ra_range, dec_range, columns=Non
     Returns:
         df (dataframe): pandas dataframe containing the selected data
     """
+    logging.info('Reading parquet file.')
     filter_coords = [
-        (ra_key, '>=', ra_range[0]),
-        (ra_key, '<=', ra_range[1]),
-        (dec_key, '>=', dec_range[0]),
-        (dec_key, '<=', dec_range[1]),
+        ('ra', '>=', ra_range[0]),
+        ('ra', '<=', ra_range[1]),
+        ('dec', '>=', dec_range[0]),
+        ('dec', '<=', dec_range[1]),
     ]
     df = pq.read_table(parquet_path, memory_map=True, filters=filter_coords).to_pandas()
     if columns:
         df = df[columns]
+    logging.info(f'Read {len(df)} objects from parquet file.')
     return df
 
 
@@ -352,6 +359,7 @@ def add_labels(det_df, dwarfs_df, z_class_cat):
     Returns:
         det_df (dataframe): detections dataframe with labels
     """
+    logging.info('Adding labels to the detections dataframe.')
     # define minimum and maximum ra and dec values to filter the label catalog
     margin = 0.1  # extend the ra and dec ranges by this amount in degrees
     ra_range = (np.min(det_df['ra']) - margin, np.max(det_df['ra']) + margin)
@@ -359,8 +367,6 @@ def add_labels(det_df, dwarfs_df, z_class_cat):
     # read the label catalog
     class_z_df = read_parquet(
         z_class_cat,
-        ra_key='ALPHA_J2000',
-        dec_key='DELTA_J2000',
         ra_range=ra_range,
         dec_range=dec_range,
     )
@@ -369,23 +375,24 @@ def add_labels(det_df, dwarfs_df, z_class_cat):
     # add redshift and class labels to detections dataframe
     det_df['class'] = np.nan
     det_df['zspec'] = np.nan
-    det_df['class'].loc[det_idx] = label_matches['cspec']
-    det_df['zspec'].loc[det_idx] = label_matches['zspec']
+    det_df.loc[det_idx, 'class'] = label_matches['cspec']
+    det_df.loc[det_idx, 'zspec'] = label_matches['zspec']
 
     # match detections to dwarf catalog
     det_idx, _, lsb_unmatches, _ = match_cats(det_df, dwarfs_df, max_sep=10.0)
     # add lsb labels to detections dataframe
     det_df['lsb'] = np.nan
-    det_df['lsb'].loc[det_idx] = 1
+    det_df.loc[det_idx, 'lsb'] = 1
 
     if len(lsb_unmatches) > 0:
+        logging.info(f'Found undetected but known dwarfs in tile {dwarfs_df.tile[0]}.')
         lsb_unmatches['lsb'] = 1  # dwarfs are LSB
         lsb_unmatches['class'] = 2  # dwarfs are galaxies
         # augment detections dataframe with undetected but known dwarfs
         common_columns = det_df.columns.intersection(lsb_unmatches.columns)
         logging.info(f'Common columns are: {str(common_columns)})')
         det_df = pd.concat([det_df, lsb_unmatches[common_columns]], ignore_index=True)
-
+    logging.info('Added labels to the detections dataframe.')
     return det_df
 
 
