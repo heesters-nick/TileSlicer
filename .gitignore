@@ -9,3 +9,6 @@ notebooks/.ipynb_checkpoints/
 .vscode/
 .idea/
 ruff.toml
+tables/redshifts-2024-01-04.parquet
+tables/UNIONS.312.249/
+logs/

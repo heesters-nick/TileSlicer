@@ -21,10 +21,14 @@ from kd_tree import TileWCS, build_tree, query_tree, relate_coord_tile
 from plotting import plot_cutout
 from utils import (
     TileAvailability,
+    add_labels,
     extract_tile_numbers,
+    get_numbers_from_folders,
     load_available_tiles,
     read_h5,
+    read_unions_cat,
     update_available_tiles,
+    update_master_cat,
 )
 
 client = Client()
@@ -97,6 +101,8 @@ show_tile_statistics = True
 band_constraint = 3
 # print per tile availability
 print_per_tile_availability = False
+# use UNIONS catalogs to make the cutouts
+with_unions_catalogs = True
 # download the tiles
 download_tiles = True
 # Plot cutouts from one of the tiles after execution
@@ -113,9 +119,29 @@ save_plot = True
 main_directory = '/home/nick/astro/TileSlicer/'
 table_directory = os.path.join(main_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
+# define UNIONS table directory
+unions_table_directory = '/arc/projects/unions/catalogues/'
+# define the path to the UNIONS detection catalogs
+unions_detection_directory = os.path.join(
+    unions_table_directory, 'unions/GAaP_photometry/UNIONS2000/'
+)
+# define the path to the catalog containing redshifts and classes
+redshift_class_catalog = os.path.join(
+    unions_table_directory, 'redshifts/redshifts-2024-01-04.parquet'
+)
+# define the path to the master catalog that accumulates information about the cut out objects
+catalog_master = os.path.join(table_directory, 'cutout_cat_master.parquet')
 # define catalog file
 catalog_file = 'all_known_dwarfs.csv'
+catalog_processed_file = 'all_known_dwarfs_processed.csv'
+
 catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))
+try:
+    catalog_script_processed = pd.read_csv(os.path.join(table_directory, catalog_processed_file))
+except FileNotFoundError:
+    raise FileNotFoundError(
+        'File not found. Processed catalog does not exist yet. Need to run the script with default catalog first.'
+    )
 # define the keys for ra, dec, and id in the catalog
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
@@ -199,6 +225,30 @@ def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):
     ]
 
     return unique_tiles, tiles_x_bands, catalog
+
+
+def tiles_from_unions_catalogs(avail, unions_table_dir, band_constr):
+    """
+    Get list of tiles from UNIONS catalogs that meet the band constraint.
+
+    Args:
+        avail (TileAvailability): instance of the TileAvailability class
+        unions_table_dir (str): directory where the UNIONS catalogs are located
+        band_constr (int): band constraint, tile must be available in at least this many filters
+
+    Returns:
+        unique_tiles (list): list of unique tiles for which a catalog is available
+        tiles_x_bands (list): list of unique tiles that meet the band constraint
+    """
+    tile_list = get_numbers_from_folders(unions_table_dir)
+
+    unique_tiles = list(set(tile_list))
+
+    tiles_x_bands = [
+        tile for tile in unique_tiles if len(avail.get_availability(tile)[1]) >= band_constr
+    ]
+
+    return unique_tiles, tiles_x_bands
 
 
 def download_tile_for_bands(availability, tile_numbers, in_dict, download_dir, method='api'):
@@ -402,19 +452,25 @@ def process_tile(
     availability,
     tile,
     catalog,
+    z_class_cat,
+    cat_master,
     id_key,
     ra_key,
     dec_key,
     cutout_dir,
     download_dir,
+    unions_table_dir,
     in_dict,
     size,
+    w_unions_cats,
 ):
     """
     Process a tile, create cutouts in all bands, save cutouts and metadata to hdf5 file
     :param availability: object to retrieve available tiles
     :param tile: tile numbers
     :param catalog: object catalog
+    :param z_class_cat: redshift and class catalog
+    :param cat_master: path to master catalog
     :param id_key: id key in the catalog
     :param ra_key: ra key in the catalog
     :param dec_key: dec key in the catalog
@@ -433,8 +489,15 @@ def process_tile(
     if os.path.exists(save_path):
         logging.info(f'Tile {tile} has already been processed.')
         return None
+    if w_unions_cats:
+        obj_in_tile = read_unions_cat(unions_table_dir, tile)
+        dwarfs_in_tile = catalog.loc[catalog['tile'] == tile]
+        obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat)
+        obj_in_tile['tile'] = tile
+        obj_in_tile['bands'] = avail_bands
 
-    obj_in_tile = catalog.loc[catalog['tile'] == tile]
+    else:
+        obj_in_tile = catalog.loc[catalog['tile'] == tile]
     cutout = make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dict, size)
     save_to_h5(
         cutout,
@@ -444,6 +507,11 @@ def process_tile(
         obj_in_tile[dec_key].values,
         save_path,
     )
+
+    if w_unions_cats:
+        # update the master catalog
+        update_master_cat(cat_master, obj_in_tile)
+
     return cutout
 
 
@@ -454,6 +522,9 @@ def process_tiles_in_batches(tile_list, batch_size):
 
 def main(
     cat_default,
+    cat_processed,
+    z_class_cat,
+    cat_master,
     ra_key_default,
     dec_key_default,
     id_key_default,
@@ -465,11 +536,13 @@ def main(
     cutout_dir,
     figure_dir,
     table_dir,
+    unions_det_dir,
     batch_size,
     size,
     workers,
     update,
     show_stats,
+    w_unions_cats,
     dl_tiles,
     build_kdtree,
     coordinates=None,
@@ -522,7 +595,13 @@ def main(
         coord_c = SkyCoord(
             catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs'
         )
-
+    elif w_unions_cats:
+        logging.info('Using UNIONS catalogs.')
+        catalog = cat_processed
+        ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
+        coord_c = SkyCoord(
+            catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs'
+        )
     else:
         logging.info(
             'No coordinates or DataFrame provided. Using coordinates from default DataFrame.'
@@ -547,11 +626,16 @@ def main(
     # show stats on the currently available tiles
     if show_stats:
         availability.stats()
-
-    # find the tiles the objects are in and check how many meet the band constraint
-    unique_tiles, tiles_x_bands, catalog = tile_finder(
-        availability, catalog, coord_c, tile_info_dir, band_constr
-    )
+    # get the tiles to cut out from the unions catalogs
+    if w_unions_cats:
+        unique_tiles, tiles_x_bands = tiles_from_unions_catalogs(
+            availability, unions_det_dir, band_constr
+        )
+    else:
+        # find the tiles the objects are in and check how many meet the band constraint
+        unique_tiles, tiles_x_bands, catalog = tile_finder(
+            availability, catalog, coord_c, tile_info_dir, band_constr
+        )
     # log the number of unique tiles dwarfs are in
     logging.info(f'Number of tiles with detected objects: {len(unique_tiles)}')
     # log the number of catalog entries with a tile number
@@ -571,8 +655,9 @@ def main(
     logging.info(
         f'Number of objects in the footprint that are available in\n5 bands: {len(catalog.loc[catalog.n_bands == 5])}\n4 bands: {len(catalog.loc[catalog.n_bands == 4])}\n3 bands: {len(catalog.loc[catalog.n_bands == 3])}\n2 bands: {len(catalog.loc[catalog.n_bands == 2])}\n1 band: {len(catalog.loc[catalog.n_bands == 1])}'
     )
-    # initialize a column of zeros for the cutout column
-    catalog['cutout'] = 0
+    if 'cutout' not in catalog.columns:
+        # initialize a column of zeros for the cutout column
+        catalog['cutout'] = 0
 
     if print_per_tile_availability:
         # log information on the tile availability
@@ -580,11 +665,10 @@ def main(
             bands = availability.get_availability(tile)[0]
             logging.info(f'Tile {tile} is available in {len(bands)} bands: {bands}')
 
+    # process the tiles in batches
     total_batches = len(tiles_x_bands) // batch_size + (
         1 if len(tiles_x_bands) % batch_size != 0 else 0
     )
-
-    # process the tiles in batches
     for tile_idx, tile_batch in enumerate(
         process_tiles_in_batches(tiles_x_bands, batch_size), start=1
     ):
@@ -616,13 +700,17 @@ def main(
                     availability,
                     tile,
                     catalog,
+                    z_class_cat,
+                    cat_master,
                     id_key,
                     ra_key,
                     dec_key,
                     cutout_dir,
                     download_dir,
+                    unions_det_dir,
                     in_dict,
                     size,
+                    w_unions_cats,
                 ): tile
                 for tile in tile_batch
             }
@@ -635,6 +723,7 @@ def main(
                         total_cutouts_count += cutout.shape[0]
                         successful_tiles_count += 1
                         catalog.loc[catalog['tile'] == tile, 'cutout'] = 1
+
                 except Exception as e:
                     logging.exception(f'Failed to process tile {tile}: {str(e)}')
                     failed_tiles.append(tile)
@@ -698,6 +787,9 @@ if __name__ == '__main__':
     # define the arguments for the main function
     arg_dict_main = {
         'cat_default': catalog_script,
+        'cat_processed': catalog_script_processed,
+        'z_class_cat': redshift_class_catalog,
+        'cat_master': catalog_master,
         'ra_key_default': ra_key_script,
         'dec_key_default': dec_key_script,
         'id_key_default': id_key_script,
@@ -709,11 +801,13 @@ if __name__ == '__main__':
         'cutout_dir': cutout_directory,
         'figure_dir': figure_directory,
         'table_dir': table_directory,
+        'unions_det_dir': unions_detection_directory,
         'batch_size': tile_batch_size,
         'size': cutout_size,
         'workers': num_workers,
         'update': update_tiles,
         'show_stats': show_tile_statistics,
+        'w_unions_cats': with_unions_catalogs,
         'dl_tiles': download_tiles,
         'build_kdtree': build_new_kdtree,
         'coordinates': args.coordinates,

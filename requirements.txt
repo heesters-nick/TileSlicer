@@ -12,3 +12,4 @@ astroquery
 joblib
 scikit-image
 vos  # run pip install -U vos
+pyarrow

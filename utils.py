@@ -1,8 +1,14 @@
 import logging
+import os
 import time
 
 import h5py
 import numpy as np
+import pandas as pd
+import pyarrow.parquet as pq
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.table import Table
 from vos import Client
 
 client = Client()
@@ -217,3 +223,183 @@ def read_h5(cutout_dir):
             data = np.array(f[dataset_name])
             cutout_data[dataset_name] = data
     return cutout_data
+
+
+def get_numbers_from_folders(unions_table_dir):
+    """
+    List UNIONS directories and extract tile numbers.
+
+    Args:
+        unions_table_dir (str): directory where the UNIONS catalogs are located
+
+    Returns:
+        list: tile list
+    """
+    tile_list = []
+
+    # Iterate through each folder in the specified path
+    for folder_name in os.listdir(unions_table_dir):
+        folder_full_path = os.path.join(unions_table_dir, folder_name)
+
+        # Check if the item is a directory
+        if os.path.isdir(folder_full_path):
+            try:
+                numbers_tuple = tuple(map(int, folder_name.split('.')[1:3]))
+                tile_list.append(numbers_tuple)
+            except ValueError:
+                # Handle the case where the folder name doesn't match the expected format
+                logging.error(
+                    f"Skipping folder {folder_name} as it doesn't match the expected format."
+                )
+
+    return tile_list
+
+
+def read_unions_cat(unions_table_dir, tile_nums):
+    """
+    Read UNIONS catalog from disk.
+
+    Args:
+        unions_table_dir (str): directory where the UNIONS catalogs are located
+        tile_nums (list): list of tile numbers
+
+    Returns:
+        cat (dataframe): pandas dataframe containing the UNIONS catalog for the specified tile
+    """
+    df = Table.read(
+        os.path.join(
+            unions_table_dir,
+            f'UNIONS.{str(tile_nums[0]).zfill(3)}.{str(tile_nums[1]).zfill(3)}_ugri_photoz_ext.cat',
+            f'UNIONS.{str(tile_nums[0]).zfill(3)}.{str(tile_nums[1]).zfill(3)}_ugri_photoz_ext.cat',
+        ),
+        hdu=1,
+    ).to_pandas()
+    columns = ['SeqNr', 'X_IMAGE', 'Y_IMAGE', 'ALPHA_J2000', 'DELTA_J2000', 'MAG_GAAP_r']
+    df = df[columns].rename(
+        columns={
+            'SeqNr': 'ID',
+            'X_IMAGE': 'x',
+            'Y_IMAGE': 'y',
+            'ALPHA_J2000': 'ra',
+            'DELTA_J2000': 'dec',
+            'MAG_GAAP_r': 'mag_r',
+        }
+    )
+    return df
+
+
+def match_cats(df_det, df_label, max_sep=15.0):
+    """
+    Match detections to known objects, return matches, unmatches
+
+    Args:
+        df_det (dataframe): detections dataframe
+        df_label (dataframe): dataframe of objects with labels
+        max_sep (float): maximum separation tollerance
+
+    Returns:
+        det_matching_idx (list): indices of detections for which labels are available
+        label_matches (dataframe): known objects that were detected
+        det_matches (dataframe): detections that are known objects
+    """
+    c_det = SkyCoord(df_det['ra'], df_det['dec'], unit=u.deg)
+    c_label = SkyCoord(df_label['ra'], df_label['dec'], unit=u.deg)
+
+    idx, d2d, _ = c_label.match_to_catalog_3d(c_det)
+    sep_constraint = d2d < max_sep * u.arcsec
+    label_matches = df_label[sep_constraint].reset_index(drop=True)
+    label_unmatches = df_label[~sep_constraint].reset_index(drop=True)
+    det_matching_idx = idx[sep_constraint]
+    det_matches = df_det.loc[det_matching_idx].reset_index(drop=True)
+
+    return det_matching_idx, label_matches, label_unmatches, det_matches
+
+
+def read_parquet(parquet_path, ra_key, dec_key, ra_range, dec_range, columns=None):
+    """
+    Read parquet file and return a pandas dataframe.
+
+    Args:
+        parquet_path (str): path to parquet file
+        ra_range (tuple): range of right ascension to select
+        dec_range (tuple): range of declination to select
+        columns (list): columns to select
+
+    Returns:
+        df (dataframe): pandas dataframe containing the selected data
+    """
+    filter_coords = [
+        (ra_key, '>=', ra_range[0]),
+        (ra_key, '<=', ra_range[1]),
+        (dec_key, '>=', dec_range[0]),
+        (dec_key, '<=', dec_range[1]),
+    ]
+    df = pq.read_table(parquet_path, memory_map=True, filters=filter_coords).to_pandas()
+    if columns:
+        df = df[columns]
+    return df
+
+
+def add_labels(det_df, dwarfs_df, z_class_cat):
+    """
+    Add labels to detections dataframe.
+
+    Args:
+        det_df (dataframe): detections dataframe
+        dwarfs_df (dataframe): known dwarfs located in the tile
+        z_class_cat (dataframe): catalog dataframe with redshifts and classes
+
+    Returns:
+        det_df (dataframe): detections dataframe with labels
+    """
+    # define minimum and maximum ra and dec values to filter the label catalog
+    margin = 0.1  # extend the ra and dec ranges by this amount in degrees
+    ra_range = (np.min(det_df['ra']) - margin, np.max(det_df['ra']) + margin)
+    dec_range = (np.min(det_df['dec'] - margin), np.max(det_df['dec'] + margin))
+    # read the label catalog
+    class_z_df = read_parquet(
+        z_class_cat,
+        ra_key='ALPHA_J2000',
+        dec_key='DELTA_J2000',
+        ra_range=ra_range,
+        dec_range=dec_range,
+    )
+    # match detections to redshift and class catalog
+    det_idx, label_matches, _, _ = match_cats(det_df, class_z_df, max_sep=5.0)
+    # add redshift and class labels to detections dataframe
+    det_df['class'] = np.nan
+    det_df['zspec'] = np.nan
+    det_df['class'].loc[det_idx] = label_matches['cspec']
+    det_df['zspec'].loc[det_idx] = label_matches['zspec']
+
+    # match detections to dwarf catalog
+    det_idx, _, lsb_unmatches, _ = match_cats(det_df, dwarfs_df, max_sep=10.0)
+    # add lsb labels to detections dataframe
+    det_df['lsb'] = np.nan
+    det_df['lsb'].loc[det_idx] = 1
+
+    if len(lsb_unmatches) > 0:
+        lsb_unmatches['lsb'] = 1  # dwarfs are LSB
+        lsb_unmatches['class'] = 2  # dwarfs are galaxies
+        # augment detections dataframe with undetected but known dwarfs
+        common_columns = det_df.columns.intersection(lsb_unmatches.columns)
+        logging.info(f'Common columns are: {str(common_columns)})')
+        det_df = pd.concat([det_df, lsb_unmatches[common_columns]], ignore_index=True)
+
+    return det_df
+
+
+def update_master_cat(cat_master, obj_in_tile):
+    """
+    Update the master catalog that stores information on all objects that have been cut out so far.
+
+    Args:
+        cat_master (str): path to master catalog
+        obj_in_tile (dataframe): objects that were cut out in the current tile
+    """
+    if os.path.exists(cat_master):
+        master_table = pq.read_table(cat_master, memory_map=True).to_pandas()
+        master_table_updated = pd.concat([master_table, obj_in_tile], ignore_index=True)
+        master_table_updated.to_parquet(cat_master, index=False)
+    else:
+        obj_in_tile.to_parquet(cat_master, index=False)
