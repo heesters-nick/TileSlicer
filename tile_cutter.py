@@ -746,6 +746,9 @@ def main(
         if with_plot:
             if plot_random_cutout:
                 random_tile_index = random.randint(0, len(tile_batch))
+                logging.info(
+                    f'Plotting cutouts in random tile: {tile_batch[random_tile_index]} from the current batch.'
+                )
                 avail_bands = ''.join(
                     availability.get_availability(tile_batch[random_tile_index])[0]
                 )
@@ -755,16 +758,16 @@ def main(
                 )
                 cutout = read_h5(cutout_path)
                 plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
+            else:
+                for idx in range(len(tile_batch)):
+                    avail_bands = ''.join(availability.get_availability(tile_batch[idx])[0])
+                    cutout_path = os.path.join(
+                        cutout_dir,
+                        f'{str(tile_batch[idx][0]).zfill(3)}_{str(tile_batch[idx][1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
+                    )
+                    cutout = read_h5(cutout_path)
 
-            for idx in range(len(tile_batch)):
-                avail_bands = ''.join(availability.get_availability(tile_batch[idx])[0])
-                cutout_path = os.path.join(
-                    cutout_dir,
-                    f'{str(tile_batch[idx][0]).zfill(3)}_{str(tile_batch[idx][1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
-                )
-                cutout = read_h5(cutout_path)
-
-                plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
+                    plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
 
 
 if __name__ == '__main__':
