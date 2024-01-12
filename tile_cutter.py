@@ -27,6 +27,7 @@ from utils import (
     load_available_tiles,
     read_h5,
     read_unions_cat,
+    save_tile_cat,
     update_available_tiles,
     update_master_cat,
 )
@@ -86,6 +87,7 @@ band_dict = {
     },
 }
 
+
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
 update_tiles = False
 # build kd tree with updated tiles otherwise use the already saved tree
@@ -104,9 +106,9 @@ with_unions_catalogs = True
 # download the tiles
 download_tiles = True
 # Plot cutouts from one of the tiles after execution
-with_plot = True
+with_plot = False
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
-plot_random_cutout = True
+plot_random_cutout = False
 # Show plot
 show_plot = False
 # Save plot
@@ -174,7 +176,7 @@ logging.basicConfig(
 
 ### tile parameters ###
 band_constraint = 3  # define the minimum number of bands that should be available for a tile
-tile_batch_size = 2  # number of tiles to process in parallel
+tile_batch_size = 4  # number of tiles to process in parallel
 cutout_size = 224
 num_workers = 9  # specifiy the number of parallel workers following machine capabilities
 
@@ -420,8 +422,8 @@ def make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dic
             data = hdul[fits_ext].data  # type: ignore
         for i, (x, y) in enumerate(zip(obj_in_tile.x.values, obj_in_tile.y.values)):
             cutout[i, j] = make_cutout(data, x, y, size)
-            if tile == (247, 255):
-                logging.info(f'Cut {i}/{len(obj_in_tile.x.values)} objects.')
+            # if tile == (247, 255):
+            #     logging.info(f'Cut {i}/{len(obj_in_tile.x.values)} objects.')
     logging.info(f'Finished cutting objects in tile {tile}.')
     if cutout is not None:
         logging.info(f'Cutout stack for tile {tile} is not empty.')
@@ -459,12 +461,12 @@ def process_tile(
     tile,
     catalog,
     z_class_cat,
-    cat_master,
     id_key,
     ra_key,
     dec_key,
     cutout_dir,
     download_dir,
+    table_dir,
     unions_table_dir,
     in_dict,
     size,
@@ -476,12 +478,13 @@ def process_tile(
     :param tile: tile numbers
     :param catalog: object catalog
     :param z_class_cat: redshift and class catalog
-    :param cat_master: path to master catalog
     :param id_key: id key in the catalog
     :param ra_key: ra key in the catalog
     :param dec_key: dec key in the catalog
     :param cutout_dir: cutout directory
     :param download_dir: tile directory
+    :param table_dir: table directory
+    :param unions_table_dir: unions table directory
     :param in_dict: band dictionary
     :param size: cutout size
     :return image cutout in available bands, array with shape: (n_bands, cutout_size, cutout_size)
@@ -515,8 +518,8 @@ def process_tile(
     )
 
     if w_unions_cats:
-        # update the master catalog
-        update_master_cat(cat_master, obj_in_tile)
+        # save catalog to temporary file
+        save_tile_cat(table_dir, tile, obj_in_tile)
 
     return cutout
 
@@ -707,12 +710,12 @@ def main(
                     tile,
                     catalog,
                     z_class_cat,
-                    cat_master,
                     id_key,
                     ra_key,
                     dec_key,
                     cutout_dir,
                     download_dir,
+                    table_dir,
                     unions_det_dir,
                     in_dict,
                     size,
@@ -734,6 +737,9 @@ def main(
                     logging.exception(f'Failed to process tile {tile}: {str(e)}')
                     failed_tiles.append(tile)
 
+        # update the master catalog
+        update_master_cat(cat_master, table_dir, tile_batch)
+
         logging.info(
             f'\nProcessing report:\nTiles processed: {len(tile_batch)}\nCutouts created: {total_cutouts_count}'
             f'\nTiles failed: {len(failed_tiles)}/{len(tile_batch)}'
@@ -741,7 +747,9 @@ def main(
         if len(failed_tiles) != 0:
             logging.info(f'Processing error in tiles: {failed_tiles}.')
 
-        logging.info(f'Batch processing time: {(time.time() - start_batch_time) / 60} minutes.')
+        logging.info(
+            f'Batch processing time: {np.round((time.time() - start_batch_time) / 60, 2)} minutes.'
+        )
 
         # save the catalog with the suffix 'processed'
         catalog.to_csv(

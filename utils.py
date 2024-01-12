@@ -246,7 +246,9 @@ def get_numbers_from_folders(unions_table_dir):
             try:
                 numbers_tuple = tuple(map(int, folder_name.split('.')[1:3]))
                 # not all folders contain detection catalogs
-                if os.path.exists(os.path.join(folder_full_path, folder_name+'_ugri_photoz_ext.cat')):
+                if os.path.exists(
+                    os.path.join(folder_full_path, folder_name + '_ugri_photoz_ext.cat')
+                ) and numbers_tuple not in [(86, 337)]:
                     tile_list.append(numbers_tuple)
             except ValueError:
                 # Handle the case where the folder name doesn't match the expected format
@@ -269,27 +271,31 @@ def read_unions_cat(unions_table_dir, tile_nums):
         cat (dataframe): pandas dataframe containing the UNIONS catalog for the specified tile
     """
     logging.info(f'Reading UNIONS catalog for tile {tile_nums}')
-    df = Table.read(
-        os.path.join(
-            unions_table_dir,
-            f'UNIONS.{str(tile_nums[0]).zfill(3)}.{str(tile_nums[1]).zfill(3)}',
-            f'UNIONS.{str(tile_nums[0]).zfill(3)}.{str(tile_nums[1]).zfill(3)}_ugri_photoz_ext.cat',
-        ),
-        hdu=1,
-    ).to_pandas()
-    columns = ['SeqNr', 'X_IMAGE', 'Y_IMAGE', 'ALPHA_J2000', 'DELTA_J2000', 'MAG_GAAP_r']
-    df = df[columns].rename(
-        columns={
-            'SeqNr': 'ID',
-            'X_IMAGE': 'x',
-            'Y_IMAGE': 'y',
-            'ALPHA_J2000': 'ra',
-            'DELTA_J2000': 'dec',
-            'MAG_GAAP_r': 'mag_r',
-        }
-    )
-    df = df[:5000]
-    logging.info(f'Read {len(df)} objects from UNIONS catalog for tile {tile_nums}')
+    try:
+        df = Table.read(
+            os.path.join(
+                unions_table_dir,
+                f'UNIONS.{str(tile_nums[0]).zfill(3)}.{str(tile_nums[1]).zfill(3)}',
+                f'UNIONS.{str(tile_nums[0]).zfill(3)}.{str(tile_nums[1]).zfill(3)}_ugri_photoz_ext.cat',
+            ),
+            hdu=1,
+        ).to_pandas()
+        columns = ['SeqNr', 'X_IMAGE', 'Y_IMAGE', 'ALPHA_J2000', 'DELTA_J2000', 'MAG_GAAP_r']
+        df = df[columns].rename(
+            columns={
+                'SeqNr': 'ID',
+                'X_IMAGE': 'x',
+                'Y_IMAGE': 'y',
+                'ALPHA_J2000': 'ra',
+                'DELTA_J2000': 'dec',
+                'MAG_GAAP_r': 'mag_r',
+            }
+        )
+        df = df[:2000]
+        logging.info(f'Read {len(df)} objects from UNIONS catalog for tile {tile_nums}')
+    except PermissionError:
+        logging.error(f'Permission error reading UNIONS catalog for tile {tile_nums}')
+        df = None
     return df
 
 
@@ -333,7 +339,7 @@ def read_parquet(parquet_path, ra_range, dec_range, columns=None):
     Returns:
         df (dataframe): pandas dataframe containing the selected data
     """
-    logging.info('Reading parquet file.')
+    logging.info('Reading redshift catalog.')
     filter_coords = [
         ('ra', '>=', ra_range[0]),
         ('ra', '<=', ra_range[1]),
@@ -343,7 +349,7 @@ def read_parquet(parquet_path, ra_range, dec_range, columns=None):
     df = pq.read_table(parquet_path, memory_map=True, filters=filter_coords).to_pandas()
     if columns:
         df = df[columns]
-    logging.info(f'Read {len(df)} objects from parquet file.')
+    logging.info(f'Read {len(df)} objects from redshift catalog.')
     return df
 
 
@@ -396,7 +402,7 @@ def add_labels(det_df, dwarfs_df, z_class_cat):
     return det_df
 
 
-def update_master_cat(cat_master, obj_in_tile):
+def update_master_cat1(cat_master, obj_in_tile, tile_nums):
     """
     Update the master catalog that stores information on all objects that have been cut out so far.
 
@@ -410,3 +416,49 @@ def update_master_cat(cat_master, obj_in_tile):
         master_table_updated.to_parquet(cat_master, index=False)
     else:
         obj_in_tile.to_parquet(cat_master, index=False)
+
+
+def save_tile_cat(table_dir, tile_nums, obj_in_tile):
+    """
+    Save the tile catalog to a temporary file.
+
+    Args:
+        table_dir (str): path to directory where catalogs are stored
+        tile_nums (tuple): tile numbers
+        obj_in_tile (dataframe): objects that were cut out in the current tile
+    """
+    logging.info(f'Saving tile catalog for tile {tile_nums} to a temporary file.')
+    temp_path = os.path.join(table_dir, f'cat_temp_{tile_nums[0]}_{tile_nums[1]}.parquet')
+    obj_in_tile.to_parquet(temp_path, index=False)
+
+
+def update_master_cat(cat_master, table_dir, batch_tile_list):
+    """
+    Fuse catalogs from tiles in the batch and append the fused catalog to the master catalog.
+
+    Args:
+        cat_master (str): path to master catalog
+        table_dir (str): path to directory where catalogs are stored
+        batch_tile_list (list): list of tile numbers in the batch
+    """
+    logging.info('Updating the master catalog..')
+    tile_cats = []
+    for tile in batch_tile_list:
+        temp_path = os.path.join(table_dir, f'cat_temp_{tile[0]}_{tile[1]}.parquet')
+        if os.path.exists(temp_path):
+            tile_cat = pq.read_table(temp_path, memory_map=True).to_pandas()
+            tile_cats.append(tile_cat)
+            os.remove(temp_path)
+
+    # fuse catalogs in the tile batch
+    batch_tile_cats = pd.concat(tile_cats, ignore_index=True)
+
+    # update master catalog if it exists
+    if os.path.exists(cat_master):
+        master_table = pq.read_table(cat_master, memory_map=True).to_pandas()
+        master_table_updated = pd.concat([master_table, batch_tile_cats], ignore_index=True)
+        master_table_updated.to_parquet(cat_master, index=False)
+    # create a new master catalog if it does not exist yet
+    else:
+        batch_tile_cats.to_parquet(cat_master, index=False)
+    logging.info('Updated the master catalog.')

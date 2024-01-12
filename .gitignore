@@ -11,6 +11,6 @@ notebooks/.ipynb_checkpoints/
 ruff.toml
 tables/redshifts-2024-01-04.parquet
 tables/UNIONS.312.249/
-logs/tilecutter.log
 logs/
 tables/cutout_cat_master.parquet
+.conda/
