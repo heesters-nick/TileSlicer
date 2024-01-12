@@ -295,6 +295,7 @@ def read_unions_cat(unions_table_dir, tile_nums):
         logging.info(f'Read {len(df)} objects from UNIONS catalog for tile {tile_nums}')
     except PermissionError:
         logging.error(f'Permission error reading UNIONS catalog for tile {tile_nums}')
+        # return empty dataframe with the same columns as the UNIONS catalog
         df = None
     return df
 

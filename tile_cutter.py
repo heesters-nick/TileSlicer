@@ -502,6 +502,9 @@ def process_tile(
         obj_in_tile = read_unions_cat(unions_table_dir, tile)
         dwarfs_in_tile = catalog.loc[catalog['tile'] == tile]
         obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat)
+        if obj_in_tile is None:
+            logging.info(f'No objects cut out in tile {tile}.')
+            return None
         obj_in_tile['tile'] = str(tile)
         obj_in_tile['bands'] = str(avail_bands)
 
