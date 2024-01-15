@@ -25,6 +25,7 @@ from utils import (
     extract_tile_numbers,
     get_numbers_from_folders,
     load_available_tiles,
+    object_batch_generator,
     read_h5,
     read_unions_cat,
     save_tile_cat,
@@ -177,6 +178,7 @@ logging.basicConfig(
 ### tile parameters ###
 band_constraint = 3  # define the minimum number of bands that should be available for a tile
 tile_batch_size = 4  # number of tiles to process in parallel
+object_batch_size = 10000  # number of objects to process at a time
 cutout_size = 224
 num_workers = 9  # specifiy the number of parallel workers following machine capabilities
 
@@ -396,7 +398,9 @@ def make_cutout(data, x, y, size):
     return img_cutout
 
 
-def make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dict, size):
+def make_cutouts_all_bands(
+    availability, tile, obj_in_tile, download_dir, in_dict, size, obj_batch_num=None
+):
     """
     Loops over all five bands for a given tile, creates cutouts of the targets and adds them to the band dictionary.
     :param availability: object to retrieve available tiles
@@ -407,7 +411,10 @@ def make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dic
     :param size: square cutout size in pixels
     :return: updated band dictionary containing cutout data
     """
-    logging.info(f'Cutting out objects in tile {tile}.')
+    if obj_batch_num is not None:
+        logging.info(f'Cutting out objects in tile {tile} batch {obj_batch_num}.')
+    else:
+        logging.info(f'Cutting out objects in tile {tile}.')
     avail_idx = availability.get_availability(tile)[1]
     cutout = np.zeros((len(obj_in_tile), len(in_dict), size, size))
     tile_dir = download_dir + f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
@@ -422,8 +429,8 @@ def make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dic
             data = hdul[fits_ext].data  # type: ignore
         for i, (x, y) in enumerate(zip(obj_in_tile.x.values, obj_in_tile.y.values)):
             cutout[i, j] = make_cutout(data, x, y, size)
-            # if tile == (247, 255):
-            #     logging.info(f'Cut {i}/{len(obj_in_tile.x.values)} objects.')
+            if tile == (247, 255):
+                logging.info(f'Cut {i}/{len(obj_in_tile.x.values)} objects.')
     logging.info(f'Finished cutting objects in tile {tile}.')
     if cutout is not None:
         logging.info(f'Cutout stack for tile {tile} is not empty.')
@@ -471,6 +478,7 @@ def process_tile(
     in_dict,
     size,
     w_unions_cats,
+    obj_batch_size,
 ):
     """
     Process a tile, create cutouts in all bands, save cutouts and metadata to hdf5 file
@@ -487,6 +495,8 @@ def process_tile(
     :param unions_table_dir: unions table directory
     :param in_dict: band dictionary
     :param size: cutout size
+    :param w_unions_cats: use UNIONS catalogs
+    :param obj_batch_size: number of objects to process at a time
     :return image cutout in available bands, array with shape: (n_bands, cutout_size, cutout_size)
     """
     avail_bands = ''.join(availability.get_availability(tile)[0])
@@ -494,10 +504,16 @@ def process_tile(
         cutout_dir,
         f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
     )
+    base_path, extension = os.path.splitext(save_path)
+
     # check if the tile has already been processed
     if os.path.exists(save_path):
         logging.info(f'Tile {tile} has already been processed.')
         return None
+
+    # initialize cutout
+    cutout = None
+
     if w_unions_cats:
         obj_in_tile = read_unions_cat(unions_table_dir, tile)
         dwarfs_in_tile = catalog.loc[catalog['tile'] == tile]
@@ -508,17 +524,34 @@ def process_tile(
         obj_in_tile['tile'] = str(tile)
         obj_in_tile['bands'] = str(avail_bands)
 
+        # process in batches to avoid memory leakage
+        for batch_nr, obj_batch in enumerate(object_batch_generator(obj_in_tile, obj_batch_size)):
+            cutout = make_cutouts_all_bands(
+                availability, tile, obj_batch, download_dir, in_dict, size, batch_nr
+            )
+            save_to_h5(
+                cutout,
+                tile,
+                obj_batch[id_key].values,
+                obj_batch[ra_key].values,
+                obj_batch[dec_key].values,
+                f'{base_path}_batch_{batch_nr+1}{extension}',
+            )
+
     else:
         obj_in_tile = catalog.loc[catalog['tile'] == tile]
-    cutout = make_cutouts_all_bands(availability, tile, obj_in_tile, download_dir, in_dict, size)
-    save_to_h5(
-        cutout,
-        tile,
-        obj_in_tile[id_key].values,
-        obj_in_tile[ra_key].values,
-        obj_in_tile[dec_key].values,
-        save_path,
-    )
+
+        cutout = make_cutouts_all_bands(
+            availability, tile, obj_in_tile, download_dir, in_dict, size
+        )
+        save_to_h5(
+            cutout,
+            tile,
+            obj_in_tile[id_key].values,
+            obj_in_tile[ra_key].values,
+            obj_in_tile[dec_key].values,
+            save_path,
+        )
 
     if w_unions_cats:
         # save catalog to temporary file
@@ -550,6 +583,7 @@ def main(
     table_dir,
     unions_det_dir,
     batch_size,
+    obj_batch_size,
     size,
     workers,
     update,
@@ -723,6 +757,7 @@ def main(
                     in_dict,
                     size,
                     w_unions_cats,
+                    obj_batch_size,
                 ): tile
                 for tile in tile_batch
             }
@@ -823,6 +858,7 @@ if __name__ == '__main__':
         'table_dir': table_directory,
         'unions_det_dir': unions_detection_directory,
         'batch_size': tile_batch_size,
+        'obj_batch_size': object_batch_size,
         'size': cutout_size,
         'workers': num_workers,
         'update': update_tiles,

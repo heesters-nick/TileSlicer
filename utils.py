@@ -291,11 +291,12 @@ def read_unions_cat(unions_table_dir, tile_nums):
                 'MAG_GAAP_r': 'mag_r',
             }
         )
-        df = df[:2000]
+        # replace -99 and +99 values with NaN
+        df['mag_r'].replace([-99.0, 99.0], np.nan, inplace=True)
+
         logging.info(f'Read {len(df)} objects from UNIONS catalog for tile {tile_nums}')
     except PermissionError:
         logging.error(f'Permission error reading UNIONS catalog for tile {tile_nums}')
-        # return empty dataframe with the same columns as the UNIONS catalog
         df = None
     return df
 
@@ -463,3 +464,19 @@ def update_master_cat(cat_master, table_dir, batch_tile_list):
     else:
         batch_tile_cats.to_parquet(cat_master, index=False)
     logging.info('Updated the master catalog.')
+
+
+def object_batch_generator(obj_df, batch_size):
+    """
+    Generate batches of objects from a dataframe.
+
+    Args:
+        obj_df (dataframe): dataframe containing objects
+        batch_size (int): batch size
+
+    Yields:
+        dataframe: batch of objects
+    """
+    total_rows = len(obj_df)
+    for i in range(0, total_rows, batch_size):
+        yield obj_df.iloc[i : min(i + batch_size, total_rows)]
