@@ -1,8 +1,8 @@
 import argparse
 import concurrent.futures
+import glob
 import logging
 import os
-import random
 import subprocess
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -107,9 +107,9 @@ with_unions_catalogs = True
 # download the tiles
 download_tiles = True
 # Plot cutouts from one of the tiles after execution
-with_plot = False
+with_plot = True
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
-plot_random_cutout = False
+plot_random_cutout = True
 # Show plot
 show_plot = False
 # Save plot
@@ -118,6 +118,7 @@ save_plot = True
 # paths
 # define the root directory
 main_directory = '/arc/home/heestersnick/tileslicer/'
+data_directory = '/arc/projects/unions/ssl/data/'
 table_directory = os.path.join(main_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
 # define UNIONS table directory
@@ -149,10 +150,10 @@ ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 tile_info_directory = os.path.join(main_directory, 'tile_info/')
 os.makedirs(tile_info_directory, exist_ok=True)
 # define where the tiles should be saved
-download_directory = os.path.join(main_directory, 'data/')
+download_directory = os.path.join(data_directory, 'raw/tiles/tiles2024/')
 os.makedirs(download_directory, exist_ok=True)
 # define where the cutouts should be saved
-cutout_directory = os.path.join(main_directory, 'cutouts/')
+cutout_directory = os.path.join(data_directory, 'processed/unions-cutouts/cutouts2024/')
 os.makedirs(cutout_directory, exist_ok=True)
 # define where figures should be saved
 figure_directory = os.path.join(main_directory, 'figures/')
@@ -177,8 +178,8 @@ logging.basicConfig(
 
 ### tile parameters ###
 band_constraint = 3  # define the minimum number of bands that should be available for a tile
-tile_batch_size = 4  # number of tiles to process in parallel
-object_batch_size = 10000  # number of objects to process at a time
+tile_batch_size = 6  # number of tiles to process in parallel
+object_batch_size = 5000  # number of objects to process at a time
 cutout_size = 224
 num_workers = 9  # specifiy the number of parallel workers following machine capabilities
 
@@ -412,7 +413,7 @@ def make_cutouts_all_bands(
     :return: updated band dictionary containing cutout data
     """
     if obj_batch_num is not None:
-        logging.info(f'Cutting out objects in tile {tile} batch {obj_batch_num}.')
+        logging.info(f'Cutting out objects in tile {tile}, batch {obj_batch_num}.')
     else:
         logging.info(f'Cutting out objects in tile {tile}.')
     avail_idx = availability.get_availability(tile)[1]
@@ -429,15 +430,18 @@ def make_cutouts_all_bands(
             data = hdul[fits_ext].data  # type: ignore
         for i, (x, y) in enumerate(zip(obj_in_tile.x.values, obj_in_tile.y.values)):
             cutout[i, j] = make_cutout(data, x, y, size)
-            if tile == (247, 255):
-                logging.info(f'Cut {i}/{len(obj_in_tile.x.values)} objects.')
-    logging.info(f'Finished cutting objects in tile {tile}.')
-    if cutout is not None:
-        logging.info(f'Cutout stack for tile {tile} is not empty.')
+            # if tile == (247, 255):
+            #     logging.info(f'Cut {i}/{len(obj_in_tile.x.values)} objects.')
+
+    logging.info(f'Finished cutting objects in tile {tile}, batch {obj_batch_num}.')
+
+    if np.any(cutout != 0):
+        logging.info(f'Cutout stack for tile {tile}, batch {obj_batch_num} is not empty.')
+
     return cutout
 
 
-def save_to_h5(stacked_cutout, tile_numbers, ids, ras, decs, save_path):
+def save_to_h5(stacked_cutout, tile_numbers, ids, ras, decs, mag_r, save_path):
     """
     Save cutout data including metadata to file.
 
@@ -447,6 +451,7 @@ def save_to_h5(stacked_cutout, tile_numbers, ids, ras, decs, save_path):
         ids (list): object IDs
         ras (numpy.ndarray): right ascension coordinate array
         decs (numpy.ndarray): declination coordinate array
+        mag_r (numpy.ndarray): r-band magnitude array
         save_path (str): path to save the cutout
 
     Returns:
@@ -460,6 +465,7 @@ def save_to_h5(stacked_cutout, tile_numbers, ids, ras, decs, save_path):
         hf.create_dataset('cfis_id', data=np.asarray(ids, dtype='S'), dtype=dt)
         hf.create_dataset('ra', data=ras.astype(np.float32))
         hf.create_dataset('dec', data=decs.astype(np.float32))
+        hf.create_dataset('mag_r', data=mag_r.astype(np.float32))
     pass
 
 
@@ -506,11 +512,6 @@ def process_tile(
     )
     base_path, extension = os.path.splitext(save_path)
 
-    # check if the tile has already been processed
-    if os.path.exists(save_path):
-        logging.info(f'Tile {tile} has already been processed.')
-        return None
-
     # initialize cutout
     cutout = None
 
@@ -520,12 +521,20 @@ def process_tile(
         obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat)
         if obj_in_tile is None:
             logging.info(f'No objects cut out in tile {tile}.')
-            return None
+            return 0, 0
         obj_in_tile['tile'] = str(tile)
         obj_in_tile['bands'] = str(avail_bands)
 
+        # count total number of cutouts created for this tile
+        n_cutouts, n_already_cutout = 0, 0
         # process in batches to avoid memory leakage
         for batch_nr, obj_batch in enumerate(object_batch_generator(obj_in_tile, obj_batch_size)):
+            # check if the tile has already been processed
+            if os.path.exists(f'{base_path}_batch_{batch_nr+1}{extension}'):
+                logging.info(f'Tile {tile} batch {batch_nr+1} has already been processed.')
+                n_already_cutout += len(obj_batch)
+                continue
+
             cutout = make_cutouts_all_bands(
                 availability, tile, obj_batch, download_dir, in_dict, size, batch_nr
             )
@@ -535,10 +544,21 @@ def process_tile(
                 obj_batch[id_key].values,
                 obj_batch[ra_key].values,
                 obj_batch[dec_key].values,
+                obj_batch['mag_r'].values,
+                obj_batch['class'].values,
+                obj_batch['zspec'].values,
+                obj_batch['lsb'].values,
                 f'{base_path}_batch_{batch_nr+1}{extension}',
             )
-
+            if not np.all(cutout == 0):
+                n_cutouts += cutout.shape[0]
+            # release memory
+            cutout = None
     else:
+        if os.path.exists(save_path):
+            logging.info(f'Tile {tile} has already been processed.')
+            return None
+
         obj_in_tile = catalog.loc[catalog['tile'] == tile]
 
         cutout = make_cutouts_all_bands(
@@ -552,12 +572,13 @@ def process_tile(
             obj_in_tile[dec_key].values,
             save_path,
         )
+        n_cutouts = cutout.shape[0]
 
     if w_unions_cats:
         # save catalog to temporary file
         save_tile_cat(table_dir, tile, obj_in_tile)
 
-    return cutout
+    return n_cutouts, n_already_cutout, len(obj_in_tile)
 
 
 def process_tiles_in_batches(tile_list, batch_size):
@@ -765,11 +786,17 @@ def main(
             for future in concurrent.futures.as_completed(future_to_tile):
                 tile = future_to_tile[future]
                 try:
-                    cutout = future.result()
-                    if cutout is not None:
-                        total_cutouts_count += cutout.shape[0]
+                    result = future.result()
+                    if (result[0] + result[1]) == result[3]:
+                        logging.info('All objects in the tile were cut out.')
+                        new_cutouts = result[0] + result[1]
+                        total_cutouts_count += new_cutouts
                         successful_tiles_count += 1
                         catalog.loc[catalog['tile'] == tile, 'cutout'] = 1
+                    else:
+                        logging.error(
+                            f'Something went wrong in tile {tile}! Only {result[0]+result[1]}/{result[3]} objects were cut out.'
+                        )
 
                 except Exception as e:
                     logging.exception(f'Failed to process tile {tile}: {str(e)}')
@@ -777,6 +804,15 @@ def main(
 
         # update the master catalog
         update_master_cat(cat_master, table_dir, tile_batch)
+
+        if len(failed_tiles) == 0:
+            logging.info('Tile batch processed sucessfully, deleting raw data..')
+            for tile in tile_batch:
+                tile_folder = os.path.join(
+                    download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
+                )
+                if os.path.exists(tile_folder):
+                    os.remove(tile_folder)
 
         logging.info(
             f'\nProcessing report:\nTiles processed: {len(tile_batch)}\nCutouts created: {total_cutouts_count}'
@@ -797,19 +833,43 @@ def main(
         # plot all cutouts or just a random one
         if with_plot:
             if plot_random_cutout:
-                random_tile_index = random.randint(0, len(tile_batch))
-                logging.info(
-                    f'Plotting cutouts in random tile: {tile_batch[random_tile_index]} from the current batch.'
-                )
+                random_tile_index = np.random.randint(0, len(tile_batch))
                 avail_bands = ''.join(
                     availability.get_availability(tile_batch[random_tile_index])[0]
                 )
-                cutout_path = os.path.join(
-                    cutout_dir,
-                    f'{str(tile_batch[random_tile_index][0]).zfill(3)}_{str(tile_batch[random_tile_index][1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
+
+                file_name_pattern = f'{str(tile_batch[random_tile_index][0]).zfill(3)}_{str(tile_batch[random_tile_index][1]).zfill(3)}_{size}x{size}_{avail_bands}'
+
+                num_files_for_tile = len(
+                    glob.glob(os.path.join(cutout_dir, f'*{file_name_pattern}*.h5'))
                 )
+                random_part_of_tile = np.random.randint(1, num_files_for_tile + 1)
+
+                logging.info(
+                    f'Plotting cutouts in random tile: {tile_batch[random_tile_index]} from the current batch.'
+                )
+                if w_unions_cats:
+                    # open a random portion of the cutouts for the random tile
+                    cutout_path = os.path.join(
+                        cutout_dir,
+                        file_name_pattern + f'_batch_{random_part_of_tile}.h5',
+                    )
+                else:
+                    cutout_path = os.path.join(
+                        cutout_dir,
+                        file_name_pattern + '.h5',
+                    )
                 cutout = read_h5(cutout_path)
-                plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
+                random_obj_index = np.random.randint(0, cutout['images'].shape[0])
+                # plot a random object from the stack of cutouts
+                plot_cutout(
+                    cutout,
+                    in_dict,
+                    figure_dir,
+                    random_obj_index,
+                    show_plot=show_plt,
+                    save_plot=save_plt,
+                )
             else:
                 for idx in range(len(tile_batch)):
                     avail_bands = ''.join(availability.get_availability(tile_batch[idx])[0])

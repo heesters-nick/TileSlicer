@@ -404,22 +404,6 @@ def add_labels(det_df, dwarfs_df, z_class_cat):
     return det_df
 
 
-def update_master_cat1(cat_master, obj_in_tile, tile_nums):
-    """
-    Update the master catalog that stores information on all objects that have been cut out so far.
-
-    Args:
-        cat_master (str): path to master catalog
-        obj_in_tile (dataframe): objects that were cut out in the current tile
-    """
-    if os.path.exists(cat_master):
-        master_table = pq.read_table(cat_master, memory_map=True).to_pandas()
-        master_table_updated = pd.concat([master_table, obj_in_tile], ignore_index=True)
-        master_table_updated.to_parquet(cat_master, index=False)
-    else:
-        obj_in_tile.to_parquet(cat_master, index=False)
-
-
 def save_tile_cat(table_dir, tile_nums, obj_in_tile):
     """
     Save the tile catalog to a temporary file.
@@ -451,7 +435,9 @@ def update_master_cat(cat_master, table_dir, batch_tile_list):
             tile_cat = pq.read_table(temp_path, memory_map=True).to_pandas()
             tile_cats.append(tile_cat)
             os.remove(temp_path)
-
+    if len(tile_cats) == 0:
+        logging.info('No catalogs to fuse.')
+        return
     # fuse catalogs in the tile batch
     batch_tile_cats = pd.concat(tile_cats, ignore_index=True)
 
@@ -459,6 +445,18 @@ def update_master_cat(cat_master, table_dir, batch_tile_list):
     if os.path.exists(cat_master):
         master_table = pq.read_table(cat_master, memory_map=True).to_pandas()
         master_table_updated = pd.concat([master_table, batch_tile_cats], ignore_index=True)
+
+        # Check for duplicate rows
+        duplicate_rows = master_table_updated[master_table_updated.duplicated()]
+
+        if not duplicate_rows.empty:
+            logging.info('Duplicate rows found. Dropping them.')
+
+            # Remove duplicate rows
+            master_table_updated = master_table_updated.drop_duplicates()
+        else:
+            logging.info('No duplicate rows found. Moving on.')
+
         master_table_updated.to_parquet(cat_master, index=False)
     # create a new master catalog if it does not exist yet
     else:
@@ -480,3 +478,7 @@ def object_batch_generator(obj_df, batch_size):
     total_rows = len(obj_df)
     for i in range(0, total_rows, batch_size):
         yield obj_df.iloc[i : min(i + batch_size, total_rows)]
+
+
+def is_array_non_empty(array):
+    return any(element != 0 for element in array)
