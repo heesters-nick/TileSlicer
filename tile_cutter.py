@@ -441,7 +441,9 @@ def make_cutouts_all_bands(
     return cutout
 
 
-def save_to_h5(stacked_cutout, tile_numbers, ids, ras, decs, mag_r, save_path):
+def save_to_h5(
+    stacked_cutout, tile_numbers, ids, ras, decs, mag_r, class_label, z_label, lsb_label, save_path
+):
     """
     Save cutout data including metadata to file.
 
@@ -452,6 +454,9 @@ def save_to_h5(stacked_cutout, tile_numbers, ids, ras, decs, mag_r, save_path):
         ras (numpy.ndarray): right ascension coordinate array
         decs (numpy.ndarray): declination coordinate array
         mag_r (numpy.ndarray): r-band magnitude array
+        class_label (numpy.ndarray): class label array
+        z_label (numpy.ndarray): redshift label array
+        lsb_label (numpy.ndarray): LSB class label array
         save_path (str): path to save the cutout
 
     Returns:
@@ -466,6 +471,9 @@ def save_to_h5(stacked_cutout, tile_numbers, ids, ras, decs, mag_r, save_path):
         hf.create_dataset('ra', data=ras.astype(np.float32))
         hf.create_dataset('dec', data=decs.astype(np.float32))
         hf.create_dataset('mag_r', data=mag_r.astype(np.float32))
+        hf.create_dataset('class', data=class_label.astype(np.float32))
+        hf.create_dataset('zspec', data=z_label.astype(np.float32))
+        hf.create_dataset('lsb', data=lsb_label.astype(np.float32))
     pass
 
 
