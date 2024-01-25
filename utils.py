@@ -2,14 +2,17 @@ import glob
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import h5py
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
+import requests
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.table import Table
+from tqdm import tqdm
 from vos import Client
 
 client = Client()
@@ -396,11 +399,11 @@ def add_labels(det_df, dwarfs_df, z_class_cat, lens_cat):
     )
 
     logging.info(
-        f'Found {np.count_nonzero(~np.isnan(label_matches_z_class['zspec']))} matching objects in the redshift/class catalog.'
+        f'Found {np.count_nonzero(~np.isnan(label_matches_z_class["zspec"]))} matching objects in the redshift/class catalog.'
     )
 
     logging.info(
-        f'Added {np.count_nonzero(~np.isnan(det_df['zspec']))} to the detection dataframe.'
+        f'Added {np.count_nonzero(~np.isnan(det_df["zspec"]))} to the detection dataframe.'
     )
 
     # read the lens catalog
@@ -418,7 +421,7 @@ def add_labels(det_df, dwarfs_df, z_class_cat, lens_cat):
 
     logging.info(f'Found {len(label_matches_lens)} matching objects in the lens catalog.')
 
-    logging.info(f'Added {np.count_nonzero(~np.isnan(det_df['lens']))} to the detection dataframe.')
+    logging.info(f'Added {np.count_nonzero(~np.isnan(det_df["lens"]))} to the detection dataframe.')
 
     # match detections to dwarf catalog
     det_idx_lsb, _, lsb_unmatches, _ = match_cats(det_df, dwarfs_df, max_sep=10.0)
@@ -607,91 +610,132 @@ def update_h5_labels(h5_path, unions_det_dir, z_class_cat, lens_cat):
 
             # create pandas dataframe
             df = pd.DataFrame({'ra': ra, 'dec': dec})
-            obj_df = read_unions_cat(unions_det_dir, hf['tile'][:])
+            obj_df = read_unions_cat(unions_det_dir, hf['tile'][:])  # type: ignore
 
-            margin = 0.0014  # extend the ra and dec ranges by this amount in degrees
-            ra_range = (np.min(obj_df['ra']) - margin, np.max(obj_df['ra']) + margin)
-            dec_range = (np.min(obj_df['dec'] - margin), np.max(obj_df['dec'] + margin))
+            if obj_df is not None:
+                margin = 0.0014  # extend the ra and dec ranges by this amount in degrees
+                ra_range = (np.min(obj_df['ra']) - margin, np.max(obj_df['ra']) + margin)
+                dec_range = (np.min(obj_df['dec'] - margin), np.max(obj_df['dec'] + margin))
 
-            # read the label catalog
-            class_z_df = read_parquet(
-                z_class_cat,
-                ra_range=ra_range,
-                dec_range=dec_range,
-            )
-            # match detections to redshift and class catalog
-            det_idx, label_matches, _, _ = match_cats(obj_df, class_z_df, max_sep=1.0)
-            # add redshift and class labels to detections dataframe
-            obj_df['class'] = np.nan
-            obj_df['zspec'] = np.nan
-            det_idx = det_idx.astype(np.int32)  # make sure index is int
-            obj_df.loc[det_idx, 'class'] = label_matches['cspec'].values
-            obj_df.loc[det_idx, 'zspec'] = label_matches['zspec'].values
+                # read the label catalog
+                class_z_df = read_parquet(
+                    z_class_cat,
+                    ra_range=ra_range,
+                    dec_range=dec_range,
+                )
+                # match detections to redshift and class catalog
+                det_idx, label_matches, _, _ = match_cats(obj_df, class_z_df, max_sep=1.0)
+                # add redshift and class labels to detections dataframe
+                obj_df['class'] = np.nan
+                obj_df['zspec'] = np.nan
+                det_idx = det_idx.astype(np.int32)  # make sure index is int
+                obj_df.loc[det_idx, 'class'] = label_matches['cspec'].values
+                obj_df.loc[det_idx, 'zspec'] = label_matches['zspec'].values
 
-            # read the lens catalog
-            lens_df = read_parquet(lens_cat, ra_range=ra_range, dec_range=dec_range)
-            # match detections to lens catalog
-            det_idx_lens, label_matches_lens, _, _ = match_cats(obj_df, lens_df, max_sep=1.0)
-            det_idx_lens = det_idx_lens.astype(np.int32)  # make sure index is int
-            # add lens labels to detections dataframe
-            obj_df['lens'] = np.nan
-            obj_df.loc[det_idx_lens, 'lens'] = 1
+                # read the lens catalog
+                lens_df = read_parquet(lens_cat, ra_range=ra_range, dec_range=dec_range)
+                # match detections to lens catalog
+                det_idx_lens, label_matches_lens, _, _ = match_cats(obj_df, lens_df, max_sep=1.0)
+                det_idx_lens = det_idx_lens.astype(np.int32)  # make sure index is int
+                # add lens labels to detections dataframe
+                obj_df['lens'] = np.nan
+                obj_df.loc[det_idx_lens, 'lens'] = 1
 
-            logging.info(f'There are {len(df)} objects in the HDF5 file.')
-            # change to float32 for matching
-            obj_df['ra'] = obj_df['ra'].astype('float32')
-            obj_df['dec'] = obj_df['dec'].astype('float32')
-            obj_df['zspec'] = obj_df['zspec'].astype('float32')
-            obj_df['class'] = obj_df['class'].astype('float32')
-            # get part of the obj_df where ra and dec are equal to ra/dec in df
-            merged_df = pd.merge(df, obj_df, on=['ra', 'dec'], how='inner')
+                logging.info(f'There are {len(df)} objects in the HDF5 file.')
+                # change to float32 for matching
+                obj_df['ra'] = obj_df['ra'].astype('float32')
+                obj_df['dec'] = obj_df['dec'].astype('float32')
+                obj_df['zspec'] = obj_df['zspec'].astype('float32')
+                obj_df['class'] = obj_df['class'].astype('float32')
+                # get part of the obj_df where ra and dec are equal to ra/dec in df
+                merged_df = pd.merge(df, obj_df, on=['ra', 'dec'], how='inner')
 
-            dataset_names = ['zspec', 'class', 'lens']  # Specify the dataset names
-            # create empty dataframe
-            h5_df = pd.DataFrame()
-            # Check if datasets exist and create a DataFrame
-            for dataset_name in dataset_names:
-                try:
-                    h5_df[dataset_name] = hf[dataset_name]
-                except KeyError:
-                    logging.warning(f"Dataset '{dataset_name}' does not exist in the HDF5 file.")
-                    logging.info(f'Creating dataset {dataset_name} in the HDF5 file.')
-                    h5_df[dataset_name] = np.nan * np.ones(len(df))
+                dataset_names = ['zspec', 'class', 'lens']  # Specify the dataset names
+                # create empty dataframe
+                h5_df = pd.DataFrame()
+                # Check if datasets exist and create a DataFrame
+                for dataset_name in dataset_names:
+                    try:
+                        h5_df[dataset_name] = hf[dataset_name]
+                    except KeyError:
+                        logging.warning(
+                            f"Dataset '{dataset_name}' does not exist in the HDF5 file."
+                        )
+                        logging.info(f'Creating dataset {dataset_name} in the HDF5 file.')
+                        h5_df[dataset_name] = np.nan * np.ones(len(df))
 
-            z_matching = np.count_nonzero(
-                merged_df['zspec'].fillna('nan') == h5_df['zspec'].fillna('nan')
-            )
-            class_matching = np.count_nonzero(
-                merged_df['class'].fillna('nan') == h5_df['class'].fillna('nan')
-            )
+                z_matching = np.count_nonzero(
+                    merged_df['zspec'].fillna('nan') == h5_df['zspec'].fillna('nan')
+                )
+                class_matching = np.count_nonzero(
+                    merged_df['class'].fillna('nan') == h5_df['class'].fillna('nan')
+                )
 
-            lens_matching = np.count_nonzero(
-                merged_df['lens'].fillna('nan') == h5_df['lens'].fillna('nan')
-            )
+                lens_matching = np.count_nonzero(
+                    merged_df['lens'].fillna('nan') == h5_df['lens'].fillna('nan')
+                )
 
-            logging.info(
-                f'Found {np.count_nonzero(~merged_df['zspec'].isna())} objects with available redshift labels.'
-            )
-            logging.info(
-                f'Found {np.count_nonzero(~merged_df['class'].isna())} objects with available class labels.'
-            )
-            logging.info(
-                f'Found {np.count_nonzero(~merged_df['lens'].isna())} objects that are known lenses.'
-            )
+                logging.info(
+                    f'Found {np.count_nonzero(~merged_df["zspec"].isna())} objects with available redshift labels.'
+                )
+                logging.info(
+                    f'Found {np.count_nonzero(~merged_df["class"].isna())} objects with available class labels.'
+                )
+                logging.info(
+                    f'Found {np.count_nonzero(~merged_df["lens"].isna())} objects that are known lenses.'
+                )
 
-            logging.info(f'Changed redshifts: {len(df)-z_matching}/{len(df)}')
-            logging.info(f'Changed classes: {len(df)-class_matching}/{len(df)}')
-            logging.info(f'Changed lens labels: {len(df)-lens_matching}/ {len(df)}')
+                logging.info(f'Changed redshifts: {len(df)-z_matching}/{len(df)}')
+                logging.info(f'Changed classes: {len(df)-class_matching}/{len(df)}')
+                logging.info(f'Changed lens labels: {len(df)-lens_matching}/ {len(df)}')
 
-            for dataset_name in dataset_names:
-                if dataset_name in hf.keys():
-                    hf[dataset_name][:] = merged_df[dataset_name].values
-                else:
-                    hf.create_dataset(
-                        dataset_name, data=merged_df[dataset_name].values.astype(np.float32)
-                    )
+                for dataset_name in dataset_names:
+                    if dataset_name in hf.keys():
+                        hf[dataset_name][:] = merged_df[dataset_name].values  # type: ignore
+                    else:
+                        hf.create_dataset(
+                            dataset_name, data=merged_df[dataset_name].values.astype(np.float32)
+                        )
 
-            logging.info(f'Updated labels in {h5_path}.')
+                logging.info(f'Updated labels in {h5_path}.')
+            else:
+                logging.info(f'No UNIONS catalog for tile {hf["tile"]} found.')
 
         except KeyError:
             logging.error(f'No ra and dec in {h5_path}.')
+
+
+def download_decals_cutouts(ra, dec, pixscale, output_folder='downloads', concurrent_downloads=1):
+    base_url = 'https://www.legacysurvey.org/viewer/jpeg-cutout'
+
+    # Ensure inputs are NumPy arrays
+    ra = np.atleast_1d(ra)
+    dec = np.atleast_1d(dec)
+    pixscale = np.atleast_1d(pixscale)
+
+    # Create output folder if it doesn't exist
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Function to download a single file
+    def download_single(url, output_path):
+        try:
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            with open(output_path, 'wb') as file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    file.write(chunk)
+            # print(f"Downloaded: {output_path}")
+        except Exception as e:
+            logging.error(f'Error downloading {url}: {e}')
+
+    # Download files concurrently
+    with ThreadPoolExecutor(max_workers=concurrent_downloads) as executor:
+        futures = []
+        for i, (r, d, p) in enumerate(zip(ra, dec, pixscale)):
+            url = f'{base_url}?ra={r}&dec={d}&layer=ls-dr10&pixscale={p}'
+            output_path = os.path.join(output_folder, f'cutout_{i + 1}.jpg')
+            futures.append(executor.submit(download_single, url, output_path))
+
+        # Wait for all downloads to complete
+        for future in tqdm(futures, desc='Downloading', unit='file'):
+            future.result()

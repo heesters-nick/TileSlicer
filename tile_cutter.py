@@ -443,10 +443,15 @@ def make_cutouts_all_bands(
             # if tile == (247, 255):
             #     logging.info(f'Cut {i}/{len(obj_in_tile.x.values)} objects.')
 
-    logging.info(f'Finished cutting objects in tile {tile}, batch {obj_batch_num+1}.')
+    if obj_batch_num is not None:
+        logging.info(f'Finished cutting objects in tile {tile}, batch {obj_batch_num+1}.')
 
-    if np.any(cutout != 0):
-        logging.info(f'Cutout stack for tile {tile}, batch {obj_batch_num+1} is not empty.')
+        if np.any(cutout != 0):
+            logging.info(f'Cutout stack for tile {tile}, batch {obj_batch_num+1} is not empty.')
+    else:
+        logging.info(f'Finished cutting objects in tile {tile}.')
+        if np.any(cutout != 0):
+            logging.info(f'Cutout stack for tile {tile} is not empty.')
 
     return cutout
 
@@ -548,6 +553,9 @@ def process_tile(
 
     # initialize cutout
     cutout = None
+    # initialize return variables
+    n_cutouts, n_already_cutout, n_batches_processed, batch_nr = 0, 0, 0, 0
+    all_already_processed = False
 
     if w_unions_cats:
         obj_in_tile = read_unions_cat(unions_table_dir, tile)
@@ -555,13 +563,12 @@ def process_tile(
         obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat, lens_cat)
         if obj_in_tile is None:
             logging.info(f'No objects cut out in tile {tile}.')
-            return 0, 0, 0
+            return 0, 0, 0, 0
         obj_in_tile['tile'] = str(tile)
         obj_in_tile['bands'] = str(avail_bands)
 
         # count total number of cutouts created for this tile
-        n_cutouts, n_already_cutout = 0, 0
-        n_batches_processed = 0
+        n_cutouts, n_already_cutout, n_batches_processed = 0, 0, 0
         all_already_processed = False
         # process in batches to avoid memory leakage
         for batch_nr, obj_batch in enumerate(object_batch_generator(obj_in_tile, obj_batch_size)):
@@ -575,16 +582,16 @@ def process_tile(
                 continue
 
             logging.info(
-                f'Adding {np.count_nonzero(~np.isnan(obj_batch['zspec']))} redshifts to the cutout.'
+                f'Adding {np.count_nonzero(~np.isnan(obj_batch["zspec"]))} redshifts to the cutout.'
             )
             logging.info(
-                f'Adding {np.count_nonzero(~np.isnan(obj_batch['class']))} classes to the cutout.'
+                f'Adding {np.count_nonzero(~np.isnan(obj_batch["class"]))} classes to the cutout.'
             )
             logging.info(
-                f'Adding {np.count_nonzero(~np.isnan(obj_batch['lsb']))} lsb objects to the cutout.'
+                f'Adding {np.count_nonzero(~np.isnan(obj_batch["lsb"]))} lsb objects to the cutout.'
             )
             logging.info(
-                f'Adding {np.count_nonzero(~np.isnan(obj_batch['lens']))} lens candidates to the cutout.'
+                f'Adding {np.count_nonzero(~np.isnan(obj_batch["lens"]))} lens candidates to the cutout.'
             )
 
             cutout = make_cutouts_all_bands(
@@ -613,21 +620,35 @@ def process_tile(
             # release memory
             cutout = None
     else:
+        obj_in_tile = catalog.loc[catalog['tile'] == tile]
+
         if os.path.exists(save_path):
             logging.info(f'Tile {tile} has already been processed.')
-            return None
+            return 0, len(obj_in_tile), len(obj_in_tile), True
 
-        obj_in_tile = catalog.loc[catalog['tile'] == tile]
+        obj_in_tile = add_labels(obj_in_tile, obj_in_tile, z_class_cat, lens_cat)
+        if obj_in_tile is None:
+            logging.info(f'No objects cut out in tile {tile}.')
+            return 0, 0, 0, 0
+        obj_in_tile['tile'] = str(tile)
+        obj_in_tile['bands'] = str(avail_bands)
 
         cutout = make_cutouts_all_bands(
             availability, tile, obj_in_tile, download_dir, in_dict, size
         )
+        # no r-band magnitude available for the dwarfs
+        mag_r = np.nan * np.ones(len(obj_in_tile))
         save_to_h5(
             cutout,
             tile,
             obj_in_tile[id_key].values,
             obj_in_tile[ra_key].values,
             obj_in_tile[dec_key].values,
+            mag_r,
+            obj_in_tile['class'].values,
+            obj_in_tile['zspec'].values,
+            obj_in_tile['lsb'].values,
+            obj_in_tile['lens'].values,
             save_path,
         )
         n_cutouts = cutout.shape[0]
@@ -841,6 +862,8 @@ def main(
         successful_tiles_count = 0
         total_cutouts_count = 0
         failed_tiles = []
+        # initialize the result variables
+        result = 0, 0, 0, True
 
         # process the tiles in parallel
         with ProcessPoolExecutor() as executor:
