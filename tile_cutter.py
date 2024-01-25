@@ -3,6 +3,8 @@ import concurrent.futures
 import glob
 import logging
 import os
+import re
+import shutil
 import subprocess
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -27,10 +29,12 @@ from utils import (
     load_available_tiles,
     object_batch_generator,
     read_h5,
+    read_processed,
     read_unions_cat,
     save_tile_cat,
     update_available_tiles,
     update_master_cat,
+    update_processed,
 )
 
 client = Client()
@@ -107,7 +111,7 @@ with_unions_catalogs = True
 # download the tiles
 download_tiles = True
 # Plot cutouts from one of the tiles after execution
-with_plot = True
+with_plot = False
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
 plot_random_cutout = True
 # Show plot
@@ -131,11 +135,15 @@ unions_detection_directory = os.path.join(
 redshift_class_catalog = os.path.join(
     unions_table_directory, 'redshifts/redshifts-2024-01-04.parquet'
 )
+# define the path to the catalog containing known lenses
+lens_catalog = os.path.join(table_directory, 'known_lenses.parquet')
 # define the path to the master catalog that accumulates information about the cut out objects
 catalog_master = os.path.join(table_directory, 'cutout_cat_master.parquet')
 # define catalog file
 catalog_file = 'all_known_dwarfs.csv'
 catalog_processed_file = 'all_known_dwarfs_processed.csv'
+# define path to file containing the processed h5 files
+processed_file = os.path.join(table_directory, 'processed.txt')
 
 catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))
 try:
@@ -153,7 +161,9 @@ os.makedirs(tile_info_directory, exist_ok=True)
 download_directory = os.path.join(data_directory, 'raw/tiles/tiles2024/')
 os.makedirs(download_directory, exist_ok=True)
 # define where the cutouts should be saved
-cutout_directory = os.path.join(data_directory, 'processed/unions-cutouts/cutouts2024/')
+# cutout_directory = os.path.join(data_directory, 'processed/unions-cutouts/cutouts2024/')
+# os.makedirs(cutout_directory, exist_ok=True)
+cutout_directory = os.path.join(main_directory, 'cutouts/')
 os.makedirs(cutout_directory, exist_ok=True)
 # define where figures should be saved
 figure_directory = os.path.join(main_directory, 'figures/')
@@ -178,7 +188,7 @@ logging.basicConfig(
 
 ### tile parameters ###
 band_constraint = 3  # define the minimum number of bands that should be available for a tile
-tile_batch_size = 6  # number of tiles to process in parallel
+tile_batch_size = 1  # number of tiles to process in parallel
 object_batch_size = 5000  # number of objects to process at a time
 cutout_size = 224
 num_workers = 9  # specifiy the number of parallel workers following machine capabilities
@@ -413,7 +423,7 @@ def make_cutouts_all_bands(
     :return: updated band dictionary containing cutout data
     """
     if obj_batch_num is not None:
-        logging.info(f'Cutting out objects in tile {tile}, batch {obj_batch_num}.')
+        logging.info(f'Cutting out objects in tile {tile}, batch {obj_batch_num+1}.')
     else:
         logging.info(f'Cutting out objects in tile {tile}.')
     avail_idx = availability.get_availability(tile)[1]
@@ -433,16 +443,26 @@ def make_cutouts_all_bands(
             # if tile == (247, 255):
             #     logging.info(f'Cut {i}/{len(obj_in_tile.x.values)} objects.')
 
-    logging.info(f'Finished cutting objects in tile {tile}, batch {obj_batch_num}.')
+    logging.info(f'Finished cutting objects in tile {tile}, batch {obj_batch_num+1}.')
 
     if np.any(cutout != 0):
-        logging.info(f'Cutout stack for tile {tile}, batch {obj_batch_num} is not empty.')
+        logging.info(f'Cutout stack for tile {tile}, batch {obj_batch_num+1} is not empty.')
 
     return cutout
 
 
 def save_to_h5(
-    stacked_cutout, tile_numbers, ids, ras, decs, mag_r, class_label, z_label, lsb_label, save_path
+    stacked_cutout,
+    tile_numbers,
+    ids,
+    ras,
+    decs,
+    mag_r,
+    class_label,
+    z_label,
+    lsb_label,
+    lens_label,
+    save_path,
 ):
     """
     Save cutout data including metadata to file.
@@ -457,6 +477,7 @@ def save_to_h5(
         class_label (numpy.ndarray): class label array
         z_label (numpy.ndarray): redshift label array
         lsb_label (numpy.ndarray): LSB class label array
+        lens_label (numpy.ndarray): lens class label array
         save_path (str): path to save the cutout
 
     Returns:
@@ -474,6 +495,7 @@ def save_to_h5(
         hf.create_dataset('class', data=class_label.astype(np.float32))
         hf.create_dataset('zspec', data=z_label.astype(np.float32))
         hf.create_dataset('lsb', data=lsb_label.astype(np.float32))
+        hf.create_dataset('lens', data=lens_label.astype(np.float32))
     pass
 
 
@@ -482,6 +504,8 @@ def process_tile(
     tile,
     catalog,
     z_class_cat,
+    lens_cat,
+    processed,
     id_key,
     ra_key,
     dec_key,
@@ -500,6 +524,8 @@ def process_tile(
     :param tile: tile numbers
     :param catalog: object catalog
     :param z_class_cat: redshift and class catalog
+    :param lens_cat: lens catalog
+    :param processed: list of processed tiles
     :param id_key: id key in the catalog
     :param ra_key: ra key in the catalog
     :param dec_key: dec key in the catalog
@@ -526,26 +552,45 @@ def process_tile(
     if w_unions_cats:
         obj_in_tile = read_unions_cat(unions_table_dir, tile)
         dwarfs_in_tile = catalog.loc[catalog['tile'] == tile]
-        obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat)
+        obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat, lens_cat)
         if obj_in_tile is None:
             logging.info(f'No objects cut out in tile {tile}.')
-            return 0, 0
+            return 0, 0, 0
         obj_in_tile['tile'] = str(tile)
         obj_in_tile['bands'] = str(avail_bands)
 
         # count total number of cutouts created for this tile
         n_cutouts, n_already_cutout = 0, 0
+        n_batches_processed = 0
+        all_already_processed = False
         # process in batches to avoid memory leakage
         for batch_nr, obj_batch in enumerate(object_batch_generator(obj_in_tile, obj_batch_size)):
             # check if the tile has already been processed
-            if os.path.exists(f'{base_path}_batch_{batch_nr+1}{extension}'):
+            tile_batch_name = f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}_{size}x{size}_{avail_bands}_batch_{batch_nr+1}'
+            # if os.path.exists(f'{base_path}_batch_{batch_nr+1}{extension}'):
+            if tile_batch_name in read_processed(processed):
                 logging.info(f'Tile {tile} batch {batch_nr+1} has already been processed.')
                 n_already_cutout += len(obj_batch)
+                n_batches_processed += 1
                 continue
+
+            logging.info(
+                f'Adding {np.count_nonzero(~np.isnan(obj_batch['zspec']))} redshifts to the cutout.'
+            )
+            logging.info(
+                f'Adding {np.count_nonzero(~np.isnan(obj_batch['class']))} classes to the cutout.'
+            )
+            logging.info(
+                f'Adding {np.count_nonzero(~np.isnan(obj_batch['lsb']))} lsb objects to the cutout.'
+            )
+            logging.info(
+                f'Adding {np.count_nonzero(~np.isnan(obj_batch['lens']))} lens candidates to the cutout.'
+            )
 
             cutout = make_cutouts_all_bands(
                 availability, tile, obj_batch, download_dir, in_dict, size, batch_nr
             )
+
             save_to_h5(
                 cutout,
                 tile,
@@ -556,10 +601,15 @@ def process_tile(
                 obj_batch['class'].values,
                 obj_batch['zspec'].values,
                 obj_batch['lsb'].values,
+                obj_batch['lens'].values,
                 f'{base_path}_batch_{batch_nr+1}{extension}',
             )
+
+            update_processed(tile_batch_name, processed)
+
             if not np.all(cutout == 0):
                 n_cutouts += cutout.shape[0]
+
             # release memory
             cutout = None
     else:
@@ -583,10 +633,16 @@ def process_tile(
         n_cutouts = cutout.shape[0]
 
     if w_unions_cats:
-        # save catalog to temporary file
-        save_tile_cat(table_dir, tile, obj_in_tile)
+        if n_batches_processed == (batch_nr + 1):
+            all_already_processed = True
+            logging.info(
+                f'All objects in tile {tile} have already been processed. Skipping catalog saving.'
+            )
+        else:
+            # save catalog to temporary file
+            save_tile_cat(table_dir, tile, obj_in_tile)
 
-    return n_cutouts, n_already_cutout, len(obj_in_tile)
+    return n_cutouts, n_already_cutout, len(obj_in_tile), all_already_processed
 
 
 def process_tiles_in_batches(tile_list, batch_size):
@@ -598,7 +654,9 @@ def main(
     cat_default,
     cat_processed,
     z_class_cat,
+    lens_cat,
     cat_master,
+    processed,
     ra_key_default,
     dec_key_default,
     id_key_default,
@@ -754,6 +812,23 @@ def main(
         if dl_tiles:
             logging.info('Downloading the tiles in the available bands..')
             for tile in tile_batch:
+                # check if there is already a .h5 file with tile in its name
+                tile_pattern = re.compile(rf'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
+                set_processed = read_processed(processed)
+                if any(tile_pattern.search(file_name) for file_name in set_processed):
+                    # if (
+                    #     len(
+                    #         glob.glob(
+                    #             os.path.join(
+                    #                 cutout_dir, f'*{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}*.h5'
+                    #             )
+                    #         )
+                    #     )
+                    #     != 0
+                    # ):
+                    logging.info(f'Tile {tile} already processed.')
+                    continue
+
                 start_download = time.time()
                 if download_tile_for_bands_parallel(availability, tile, in_dict, download_dir):
                     logging.info(
@@ -776,6 +851,8 @@ def main(
                     tile,
                     catalog,
                     z_class_cat,
+                    lens_cat,
+                    processed,
                     id_key,
                     ra_key,
                     dec_key,
@@ -795,7 +872,7 @@ def main(
                 tile = future_to_tile[future]
                 try:
                     result = future.result()
-                    if (result[0] + result[1]) == result[3]:
+                    if (result[0] + result[1]) == result[2]:
                         logging.info('All objects in the tile were cut out.')
                         new_cutouts = result[0] + result[1]
                         total_cutouts_count += new_cutouts
@@ -803,15 +880,17 @@ def main(
                         catalog.loc[catalog['tile'] == tile, 'cutout'] = 1
                     else:
                         logging.error(
-                            f'Something went wrong in tile {tile}! Only {result[0]+result[1]}/{result[3]} objects were cut out.'
+                            f'Something went wrong in tile {tile}! Only {result[0]+result[1]}/{result[2]} objects were cut out.'
                         )
 
                 except Exception as e:
                     logging.exception(f'Failed to process tile {tile}: {str(e)}')
                     failed_tiles.append(tile)
 
-        # update the master catalog
-        update_master_cat(cat_master, table_dir, tile_batch)
+        # skip updating master catalog if all tile batches have already been processed
+        if not result[3]:
+            # update the master catalog
+            update_master_cat(cat_master, table_dir, tile_batch)
 
         if len(failed_tiles) == 0:
             logging.info('Tile batch processed sucessfully, deleting raw data..')
@@ -820,7 +899,9 @@ def main(
                     download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
                 )
                 if os.path.exists(tile_folder):
-                    os.remove(tile_folder)
+                    shutil.rmtree(tile_folder)
+        else:
+            logging.info('Tile batch processed with errors, keeping raw data..')
 
         logging.info(
             f'\nProcessing report:\nTiles processed: {len(tile_batch)}\nCutouts created: {total_cutouts_count}'
@@ -912,7 +993,9 @@ if __name__ == '__main__':
         'cat_default': catalog_script,
         'cat_processed': catalog_script_processed,
         'z_class_cat': redshift_class_catalog,
+        'lens_cat': lens_catalog,
         'cat_master': catalog_master,
+        'processed': processed_file,
         'ra_key_default': ra_key_script,
         'dec_key_default': dec_key_script,
         'id_key_default': id_key_script,
