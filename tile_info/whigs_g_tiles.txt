@@ -57,6 +57,7 @@ calexp-CFIS_101_303.fits
 calexp-CFIS_101_304.fits
 calexp-CFIS_101_305.fits
 calexp-CFIS_101_307.fits
+calexp-CFIS_101_308.fits
 calexp-CFIS_101_310.fits
 calexp-CFIS_101_311.fits
 calexp-CFIS_101_312.fits
@@ -411,6 +412,7 @@ calexp-CFIS_110_321.fits
 calexp-CFIS_110_322.fits
 calexp-CFIS_110_323.fits
 calexp-CFIS_110_324.fits
+calexp-CFIS_110_325.fits
 calexp-CFIS_110_326.fits
 calexp-CFIS_110_327.fits
 calexp-CFIS_110_328.fits
@@ -532,9 +534,11 @@ calexp-CFIS_113_328.fits
 calexp-CFIS_113_329.fits
 calexp-CFIS_113_330.fits
 calexp-CFIS_113_331.fits
+calexp-CFIS_113_332.fits
 calexp-CFIS_113_333.fits
 calexp-CFIS_113_334.fits
 calexp-CFIS_113_335.fits
+calexp-CFIS_113_336.fits
 calexp-CFIS_114_295.fits
 calexp-CFIS_114_296.fits
 calexp-CFIS_114_297.fits
@@ -547,6 +551,7 @@ calexp-CFIS_114_304.fits
 calexp-CFIS_114_305.fits
 calexp-CFIS_114_306.fits
 calexp-CFIS_114_307.fits
+calexp-CFIS_114_308.fits
 calexp-CFIS_114_310.fits
 calexp-CFIS_114_311.fits
 calexp-CFIS_114_312.fits
@@ -811,6 +816,7 @@ calexp-CFIS_120_297.fits
 calexp-CFIS_120_298.fits
 calexp-CFIS_120_299.fits
 calexp-CFIS_120_300.fits
+calexp-CFIS_120_301.fits
 calexp-CFIS_120_303.fits
 calexp-CFIS_120_304.fits
 calexp-CFIS_120_305.fits
@@ -922,6 +928,7 @@ calexp-CFIS_122_322.fits
 calexp-CFIS_122_323.fits
 calexp-CFIS_122_324.fits
 calexp-CFIS_122_325.fits
+calexp-CFIS_122_326.fits
 calexp-CFIS_122_327.fits
 calexp-CFIS_122_328.fits
 calexp-CFIS_122_329.fits
@@ -1150,6 +1157,7 @@ calexp-CFIS_127_322.fits
 calexp-CFIS_127_323.fits
 calexp-CFIS_127_324.fits
 calexp-CFIS_127_325.fits
+calexp-CFIS_127_326.fits
 calexp-CFIS_127_327.fits
 calexp-CFIS_127_328.fits
 calexp-CFIS_127_329.fits
@@ -1230,6 +1238,7 @@ calexp-CFIS_129_311.fits
 calexp-CFIS_129_312.fits
 calexp-CFIS_129_313.fits
 calexp-CFIS_129_314.fits
+calexp-CFIS_129_315.fits
 calexp-CFIS_129_316.fits
 calexp-CFIS_129_317.fits
 calexp-CFIS_129_318.fits
@@ -1403,6 +1412,7 @@ calexp-CFIS_132_328.fits
 calexp-CFIS_132_329.fits
 calexp-CFIS_132_330.fits
 calexp-CFIS_132_331.fits
+calexp-CFIS_132_332.fits
 calexp-CFIS_133_284.fits
 calexp-CFIS_133_285.fits
 calexp-CFIS_133_286.fits
@@ -1441,6 +1451,7 @@ calexp-CFIS_133_322.fits
 calexp-CFIS_133_323.fits
 calexp-CFIS_133_324.fits
 calexp-CFIS_133_325.fits
+calexp-CFIS_133_326.fits
 calexp-CFIS_133_327.fits
 calexp-CFIS_133_328.fits
 calexp-CFIS_133_329.fits
@@ -1480,6 +1491,7 @@ calexp-CFIS_134_316.fits
 calexp-CFIS_134_317.fits
 calexp-CFIS_134_318.fits
 calexp-CFIS_134_319.fits
+calexp-CFIS_134_320.fits
 calexp-CFIS_134_321.fits
 calexp-CFIS_134_322.fits
 calexp-CFIS_134_323.fits
@@ -1679,6 +1691,7 @@ calexp-CFIS_138_322.fits
 calexp-CFIS_138_323.fits
 calexp-CFIS_138_324.fits
 calexp-CFIS_138_325.fits
+calexp-CFIS_138_326.fits
 calexp-CFIS_138_327.fits
 calexp-CFIS_138_328.fits
 calexp-CFIS_138_329.fits
@@ -1826,6 +1839,7 @@ calexp-CFIS_141_295.fits
 calexp-CFIS_141_296.fits
 calexp-CFIS_141_297.fits
 calexp-CFIS_141_298.fits
+calexp-CFIS_141_299.fits
 calexp-CFIS_141_300.fits
 calexp-CFIS_141_301.fits
 calexp-CFIS_141_302.fits
@@ -1981,6 +1995,7 @@ calexp-CFIS_144_292.fits
 calexp-CFIS_144_293.fits
 calexp-CFIS_144_294.fits
 calexp-CFIS_144_295.fits
+calexp-CFIS_144_296.fits
 calexp-CFIS_144_297.fits
 calexp-CFIS_144_298.fits
 calexp-CFIS_144_299.fits
@@ -2283,6 +2298,7 @@ calexp-CFIS_149_322.fits
 calexp-CFIS_149_323.fits
 calexp-CFIS_149_324.fits
 calexp-CFIS_149_325.fits
+calexp-CFIS_149_326.fits
 calexp-CFIS_149_327.fits
 calexp-CFIS_149_328.fits
 calexp-CFIS_149_329.fits
@@ -2338,6 +2354,7 @@ calexp-CFIS_150_301.fits
 calexp-CFIS_150_302.fits
 calexp-CFIS_150_303.fits
 calexp-CFIS_150_304.fits
+calexp-CFIS_150_305.fits
 calexp-CFIS_150_306.fits
 calexp-CFIS_150_307.fits
 calexp-CFIS_150_308.fits
@@ -2574,6 +2591,7 @@ calexp-CFIS_154_313.fits
 calexp-CFIS_154_314.fits
 calexp-CFIS_154_315.fits
 calexp-CFIS_154_316.fits
+calexp-CFIS_154_317.fits
 calexp-CFIS_154_318.fits
 calexp-CFIS_154_319.fits
 calexp-CFIS_154_320.fits
@@ -2582,6 +2600,7 @@ calexp-CFIS_154_322.fits
 calexp-CFIS_154_323.fits
 calexp-CFIS_154_324.fits
 calexp-CFIS_154_325.fits
+calexp-CFIS_154_326.fits
 calexp-CFIS_154_327.fits
 calexp-CFIS_154_328.fits
 calexp-CFIS_155_272.fits
@@ -2686,6 +2705,7 @@ calexp-CFIS_156_314.fits
 calexp-CFIS_156_315.fits
 calexp-CFIS_156_316.fits
 calexp-CFIS_156_317.fits
+calexp-CFIS_156_318.fits
 calexp-CFIS_156_319.fits
 calexp-CFIS_156_320.fits
 calexp-CFIS_156_321.fits
@@ -3104,6 +3124,7 @@ calexp-CFIS_163_301.fits
 calexp-CFIS_163_302.fits
 calexp-CFIS_163_303.fits
 calexp-CFIS_163_304.fits
+calexp-CFIS_163_305.fits
 calexp-CFIS_163_306.fits
 calexp-CFIS_163_307.fits
 calexp-CFIS_163_308.fits
@@ -3113,6 +3134,7 @@ calexp-CFIS_163_311.fits
 calexp-CFIS_163_312.fits
 calexp-CFIS_163_313.fits
 calexp-CFIS_163_314.fits
+calexp-CFIS_163_315.fits
 calexp-CFIS_163_316.fits
 calexp-CFIS_163_317.fits
 calexp-CFIS_163_318.fits
@@ -3295,6 +3317,7 @@ calexp-CFIS_166_315.fits
 calexp-CFIS_166_316.fits
 calexp-CFIS_166_317.fits
 calexp-CFIS_166_318.fits
+calexp-CFIS_166_319.fits
 calexp-CFIS_166_320.fits
 calexp-CFIS_166_321.fits
 calexp-CFIS_166_322.fits
@@ -3468,6 +3491,7 @@ calexp-CFIS_169_321.fits
 calexp-CFIS_169_322.fits
 calexp-CFIS_169_323.fits
 calexp-CFIS_169_324.fits
+calexp-CFIS_169_325.fits
 calexp-CFIS_16_239.fits
 calexp-CFIS_16_240.fits
 calexp-CFIS_16_241.fits
@@ -3649,6 +3673,7 @@ calexp-CFIS_172_313.fits
 calexp-CFIS_172_314.fits
 calexp-CFIS_172_315.fits
 calexp-CFIS_172_316.fits
+calexp-CFIS_172_317.fits
 calexp-CFIS_172_318.fits
 calexp-CFIS_172_319.fits
 calexp-CFIS_172_320.fits
@@ -3677,6 +3702,7 @@ calexp-CFIS_173_279.fits
 calexp-CFIS_173_280.fits
 calexp-CFIS_173_281.fits
 calexp-CFIS_173_286.fits
+calexp-CFIS_173_287.fits
 calexp-CFIS_173_288.fits
 calexp-CFIS_173_289.fits
 calexp-CFIS_173_290.fits
@@ -4352,6 +4378,7 @@ calexp-CFIS_183_315.fits
 calexp-CFIS_183_316.fits
 calexp-CFIS_183_317.fits
 calexp-CFIS_183_318.fits
+calexp-CFIS_183_319.fits
 calexp-CFIS_183_320.fits
 calexp-CFIS_183_321.fits
 calexp-CFIS_183_322.fits
@@ -4455,6 +4482,7 @@ calexp-CFIS_185_290.fits
 calexp-CFIS_185_291.fits
 calexp-CFIS_185_292.fits
 calexp-CFIS_185_293.fits
+calexp-CFIS_185_294.fits
 calexp-CFIS_185_295.fits
 calexp-CFIS_185_296.fits
 calexp-CFIS_185_297.fits
@@ -4652,7 +4680,9 @@ calexp-CFIS_188_305.fits
 calexp-CFIS_188_306.fits
 calexp-CFIS_188_307.fits
 calexp-CFIS_188_308.fits
+calexp-CFIS_188_309.fits
 calexp-CFIS_188_310.fits
+calexp-CFIS_188_311.fits
 calexp-CFIS_188_312.fits
 calexp-CFIS_188_313.fits
 calexp-CFIS_188_314.fits
@@ -4805,7 +4835,9 @@ calexp-CFIS_190_313.fits
 calexp-CFIS_190_314.fits
 calexp-CFIS_190_315.fits
 calexp-CFIS_190_316.fits
+calexp-CFIS_190_317.fits
 calexp-CFIS_190_318.fits
+calexp-CFIS_190_319.fits
 calexp-CFIS_190_320.fits
 calexp-CFIS_190_321.fits
 calexp-CFIS_191_247.fits
@@ -5257,6 +5289,7 @@ calexp-CFIS_197_304.fits
 calexp-CFIS_197_305.fits
 calexp-CFIS_197_306.fits
 calexp-CFIS_197_307.fits
+calexp-CFIS_197_308.fits
 calexp-CFIS_197_309.fits
 calexp-CFIS_197_310.fits
 calexp-CFIS_197_311.fits
@@ -5643,6 +5676,7 @@ calexp-CFIS_202_303.fits
 calexp-CFIS_202_304.fits
 calexp-CFIS_202_305.fits
 calexp-CFIS_202_306.fits
+calexp-CFIS_202_307.fits
 calexp-CFIS_202_308.fits
 calexp-CFIS_202_309.fits
 calexp-CFIS_202_310.fits
@@ -6486,6 +6520,7 @@ calexp-CFIS_213_303.fits
 calexp-CFIS_213_304.fits
 calexp-CFIS_213_305.fits
 calexp-CFIS_213_306.fits
+calexp-CFIS_213_307.fits
 calexp-CFIS_213_308.fits
 calexp-CFIS_213_309.fits
 calexp-CFIS_213_310.fits
@@ -6639,6 +6674,7 @@ calexp-CFIS_215_305.fits
 calexp-CFIS_215_306.fits
 calexp-CFIS_215_307.fits
 calexp-CFIS_215_308.fits
+calexp-CFIS_215_309.fits
 calexp-CFIS_215_310.fits
 calexp-CFIS_215_311.fits
 calexp-CFIS_215_312.fits
@@ -7021,6 +7057,7 @@ calexp-CFIS_220_291.fits
 calexp-CFIS_220_292.fits
 calexp-CFIS_220_293.fits
 calexp-CFIS_220_294.fits
+calexp-CFIS_220_295.fits
 calexp-CFIS_220_296.fits
 calexp-CFIS_220_297.fits
 calexp-CFIS_220_298.fits
@@ -7448,6 +7485,7 @@ calexp-CFIS_226_278.fits
 calexp-CFIS_226_279.fits
 calexp-CFIS_226_280.fits
 calexp-CFIS_226_281.fits
+calexp-CFIS_226_282.fits
 calexp-CFIS_226_283.fits
 calexp-CFIS_226_284.fits
 calexp-CFIS_226_285.fits
@@ -8017,6 +8055,7 @@ calexp-CFIS_234_277.fits
 calexp-CFIS_234_278.fits
 calexp-CFIS_234_279.fits
 calexp-CFIS_234_280.fits
+calexp-CFIS_234_281.fits
 calexp-CFIS_234_282.fits
 calexp-CFIS_234_283.fits
 calexp-CFIS_234_284.fits
@@ -8043,6 +8082,7 @@ calexp-CFIS_234_304.fits
 calexp-CFIS_234_305.fits
 calexp-CFIS_234_306.fits
 calexp-CFIS_234_307.fits
+calexp-CFIS_234_308.fits
 calexp-CFIS_234_309.fits
 calexp-CFIS_234_310.fits
 calexp-CFIS_234_311.fits
@@ -8229,6 +8269,7 @@ calexp-CFIS_237_294.fits
 calexp-CFIS_237_295.fits
 calexp-CFIS_237_296.fits
 calexp-CFIS_237_297.fits
+calexp-CFIS_237_298.fits
 calexp-CFIS_237_299.fits
 calexp-CFIS_237_300.fits
 calexp-CFIS_237_301.fits
@@ -9194,6 +9235,7 @@ calexp-CFIS_252_277.fits
 calexp-CFIS_252_278.fits
 calexp-CFIS_252_279.fits
 calexp-CFIS_252_280.fits
+calexp-CFIS_252_281.fits
 calexp-CFIS_252_282.fits
 calexp-CFIS_252_283.fits
 calexp-CFIS_252_284.fits
@@ -9498,6 +9540,7 @@ calexp-CFIS_257_277.fits
 calexp-CFIS_257_278.fits
 calexp-CFIS_257_279.fits
 calexp-CFIS_257_280.fits
+calexp-CFIS_257_281.fits
 calexp-CFIS_257_282.fits
 calexp-CFIS_257_283.fits
 calexp-CFIS_257_284.fits
@@ -9518,6 +9561,7 @@ calexp-CFIS_257_298.fits
 calexp-CFIS_257_299.fits
 calexp-CFIS_257_300.fits
 calexp-CFIS_257_301.fits
+calexp-CFIS_257_302.fits
 calexp-CFIS_257_303.fits
 calexp-CFIS_257_304.fits
 calexp-CFIS_257_305.fits
@@ -9578,6 +9622,7 @@ calexp-CFIS_258_298.fits
 calexp-CFIS_258_299.fits
 calexp-CFIS_258_300.fits
 calexp-CFIS_258_301.fits
+calexp-CFIS_258_302.fits
 calexp-CFIS_258_303.fits
 calexp-CFIS_258_304.fits
 calexp-CFIS_258_305.fits
@@ -11241,6 +11286,7 @@ calexp-CFIS_287_273.fits
 calexp-CFIS_287_274.fits
 calexp-CFIS_287_275.fits
 calexp-CFIS_287_276.fits
+calexp-CFIS_287_277.fits
 calexp-CFIS_287_278.fits
 calexp-CFIS_287_279.fits
 calexp-CFIS_287_280.fits
@@ -11591,6 +11637,7 @@ calexp-CFIS_293_260.fits
 calexp-CFIS_293_261.fits
 calexp-CFIS_293_262.fits
 calexp-CFIS_293_263.fits
+calexp-CFIS_293_264.fits
 calexp-CFIS_293_265.fits
 calexp-CFIS_293_266.fits
 calexp-CFIS_293_267.fits
@@ -11719,6 +11766,7 @@ calexp-CFIS_295_277.fits
 calexp-CFIS_295_278.fits
 calexp-CFIS_295_279.fits
 calexp-CFIS_295_280.fits
+calexp-CFIS_295_281.fits
 calexp-CFIS_295_282.fits
 calexp-CFIS_295_283.fits
 calexp-CFIS_295_284.fits
@@ -12110,6 +12158,7 @@ calexp-CFIS_301_287.fits
 calexp-CFIS_301_288.fits
 calexp-CFIS_301_289.fits
 calexp-CFIS_301_290.fits
+calexp-CFIS_301_291.fits
 calexp-CFIS_301_292.fits
 calexp-CFIS_301_293.fits
 calexp-CFIS_301_294.fits
@@ -12207,6 +12256,7 @@ calexp-CFIS_303_277.fits
 calexp-CFIS_303_278.fits
 calexp-CFIS_303_279.fits
 calexp-CFIS_303_280.fits
+calexp-CFIS_303_281.fits
 calexp-CFIS_303_282.fits
 calexp-CFIS_303_283.fits
 calexp-CFIS_303_284.fits
@@ -12692,6 +12742,7 @@ calexp-CFIS_312_257.fits
 calexp-CFIS_312_258.fits
 calexp-CFIS_312_259.fits
 calexp-CFIS_312_260.fits
+calexp-CFIS_312_261.fits
 calexp-CFIS_312_262.fits
 calexp-CFIS_312_263.fits
 calexp-CFIS_312_264.fits
@@ -12713,6 +12764,7 @@ calexp-CFIS_312_279.fits
 calexp-CFIS_312_280.fits
 calexp-CFIS_312_281.fits
 calexp-CFIS_312_282.fits
+calexp-CFIS_312_283.fits
 calexp-CFIS_312_284.fits
 calexp-CFIS_312_285.fits
 calexp-CFIS_312_286.fits
@@ -13005,6 +13057,7 @@ calexp-CFIS_318_260.fits
 calexp-CFIS_318_261.fits
 calexp-CFIS_318_262.fits
 calexp-CFIS_318_263.fits
+calexp-CFIS_318_264.fits
 calexp-CFIS_318_265.fits
 calexp-CFIS_318_266.fits
 calexp-CFIS_318_267.fits
@@ -13440,9 +13493,11 @@ calexp-CFIS_326_273.fits
 calexp-CFIS_326_274.fits
 calexp-CFIS_326_275.fits
 calexp-CFIS_326_276.fits
+calexp-CFIS_326_277.fits
 calexp-CFIS_326_278.fits
 calexp-CFIS_326_279.fits
 calexp-CFIS_326_280.fits
+calexp-CFIS_326_281.fits
 calexp-CFIS_326_282.fits
 calexp-CFIS_326_283.fits
 calexp-CFIS_326_284.fits
@@ -14162,6 +14217,7 @@ calexp-CFIS_341_243.fits
 calexp-CFIS_341_244.fits
 calexp-CFIS_341_245.fits
 calexp-CFIS_341_246.fits
+calexp-CFIS_341_247.fits
 calexp-CFIS_341_248.fits
 calexp-CFIS_341_249.fits
 calexp-CFIS_341_250.fits
@@ -15646,6 +15702,7 @@ calexp-CFIS_377_243.fits
 calexp-CFIS_377_244.fits
 calexp-CFIS_377_245.fits
 calexp-CFIS_377_246.fits
+calexp-CFIS_377_247.fits
 calexp-CFIS_377_248.fits
 calexp-CFIS_377_249.fits
 calexp-CFIS_377_250.fits
@@ -16970,6 +17027,7 @@ calexp-CFIS_421_245.fits
 calexp-CFIS_421_246.fits
 calexp-CFIS_421_247.fits
 calexp-CFIS_421_248.fits
+calexp-CFIS_421_249.fits
 calexp-CFIS_421_250.fits
 calexp-CFIS_421_251.fits
 calexp-CFIS_421_252.fits
@@ -18012,6 +18070,7 @@ calexp-CFIS_57_328.fits
 calexp-CFIS_57_329.fits
 calexp-CFIS_57_330.fits
 calexp-CFIS_57_331.fits
+calexp-CFIS_57_332.fits
 calexp-CFIS_57_333.fits
 calexp-CFIS_57_334.fits
 calexp-CFIS_57_335.fits
@@ -18727,6 +18786,7 @@ calexp-CFIS_73_330.fits
 calexp-CFIS_73_331.fits
 calexp-CFIS_73_332.fits
 calexp-CFIS_73_333.fits
+calexp-CFIS_73_334.fits
 calexp-CFIS_73_335.fits
 calexp-CFIS_73_336.fits
 calexp-CFIS_73_337.fits
@@ -18749,6 +18809,7 @@ calexp-CFIS_74_328.fits
 calexp-CFIS_74_329.fits
 calexp-CFIS_74_330.fits
 calexp-CFIS_74_331.fits
+calexp-CFIS_74_332.fits
 calexp-CFIS_74_333.fits
 calexp-CFIS_74_334.fits
 calexp-CFIS_74_335.fits
@@ -18823,6 +18884,7 @@ calexp-CFIS_77_332.fits
 calexp-CFIS_77_333.fits
 calexp-CFIS_77_334.fits
 calexp-CFIS_77_335.fits
+calexp-CFIS_77_336.fits
 calexp-CFIS_77_337.fits
 calexp-CFIS_77_338.fits
 calexp-CFIS_77_339.fits
@@ -18941,6 +19003,7 @@ calexp-CFIS_81_332.fits
 calexp-CFIS_81_333.fits
 calexp-CFIS_81_334.fits
 calexp-CFIS_81_335.fits
+calexp-CFIS_81_336.fits
 calexp-CFIS_81_337.fits
 calexp-CFIS_81_338.fits
 calexp-CFIS_81_339.fits
@@ -19001,6 +19064,7 @@ calexp-CFIS_84_312.fits
 calexp-CFIS_84_313.fits
 calexp-CFIS_84_314.fits
 calexp-CFIS_84_315.fits
+calexp-CFIS_84_316.fits
 calexp-CFIS_84_318.fits
 calexp-CFIS_84_319.fits
 calexp-CFIS_84_320.fits
@@ -19075,6 +19139,7 @@ calexp-CFIS_86_332.fits
 calexp-CFIS_86_333.fits
 calexp-CFIS_86_334.fits
 calexp-CFIS_86_335.fits
+calexp-CFIS_86_336.fits
 calexp-CFIS_86_337.fits
 calexp-CFIS_86_338.fits
 calexp-CFIS_86_339.fits
@@ -19238,6 +19303,7 @@ calexp-CFIS_91_328.fits
 calexp-CFIS_91_329.fits
 calexp-CFIS_91_330.fits
 calexp-CFIS_91_331.fits
+calexp-CFIS_91_332.fits
 calexp-CFIS_91_333.fits
 calexp-CFIS_91_334.fits
 calexp-CFIS_91_335.fits

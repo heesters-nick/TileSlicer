@@ -12,6 +12,7 @@ ruff.toml
 tables/redshifts-2024-01-04.parquet
 tables/unions/
 tables/redshifts
-logs/
 tables/cutout_cat_master.parquet
+logs/
+tables/cutout_catalog_master.parquet
 .conda/

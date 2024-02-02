@@ -28,6 +28,7 @@ from utils import (
     get_numbers_from_folders,
     load_available_tiles,
     object_batch_generator,
+    read_dwarf_cat,
     read_h5,
     read_processed,
     read_unions_cat,
@@ -94,7 +95,7 @@ band_dict = {
 
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = False
+update_tiles = True
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -107,13 +108,13 @@ show_tile_statistics = True
 # print per tile availability
 print_per_tile_availability = False
 # use UNIONS catalogs to make the cutouts
-with_unions_catalogs = True
+with_unions_catalogs = False
 # download the tiles
 download_tiles = True
 # Plot cutouts from one of the tiles after execution
-with_plot = False
+with_plot = True
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
-plot_random_cutout = True
+plot_random_cutout = False
 # Show plot
 show_plot = False
 # Save plot
@@ -139,19 +140,13 @@ redshift_class_catalog = os.path.join(
 lens_catalog = os.path.join(table_directory, 'known_lenses.parquet')
 # define the path to the master catalog that accumulates information about the cut out objects
 catalog_master = os.path.join(table_directory, 'cutout_cat_master.parquet')
-# define catalog file
-catalog_file = 'all_known_dwarfs.csv'
-catalog_processed_file = 'all_known_dwarfs_processed.csv'
+# define the path to the catalog containing known dwarf galaxies
+dwarf_catalog = os.path.join(table_directory, 'all_known_dwarfs_processed.csv')
 # define path to file containing the processed h5 files
 processed_file = os.path.join(table_directory, 'processed.txt')
-
+# define catalog file
+catalog_file = 'all_known_dwarfs.csv'
 catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))
-try:
-    catalog_script_processed = pd.read_csv(os.path.join(table_directory, catalog_processed_file))
-except FileNotFoundError:
-    raise FileNotFoundError(
-        'File not found. Processed catalog does not exist yet. Need to run the script with default catalog first.'
-    )
 # define the keys for ra, dec, and id in the catalog
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
@@ -188,7 +183,7 @@ logging.basicConfig(
 
 ### tile parameters ###
 band_constraint = 3  # define the minimum number of bands that should be available for a tile
-tile_batch_size = 1  # number of tiles to process in parallel
+tile_batch_size = 5  # number of tiles to process in parallel
 object_batch_size = 5000  # number of objects to process at a time
 cutout_size = 224
 num_workers = 9  # specifiy the number of parallel workers following machine capabilities
@@ -218,7 +213,7 @@ def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):
         tiles_matching_catalog[i] = tile_numbers
         # check how many bands are available for this tile
         bands_tile, band_idx_tile = availability.get_availability(tile_numbers)
-        bands[i], n_bands[i] = bands_tile, len(band_idx_tile)
+        bands[i], n_bands[i] = ''.join(bands_tile), len(band_idx_tile)
         if (not bands_tile) or (tile_numbers is None):
             pix_coords[i] = np.nan, np.nan
             continue
@@ -508,6 +503,7 @@ def process_tile(
     availability,
     tile,
     catalog,
+    dwarf_cat,
     z_class_cat,
     lens_cat,
     processed,
@@ -528,6 +524,7 @@ def process_tile(
     :param availability: object to retrieve available tiles
     :param tile: tile numbers
     :param catalog: object catalog
+    :param dwarf_cat: dwarf catalog
     :param z_class_cat: redshift and class catalog
     :param lens_cat: lens catalog
     :param processed: list of processed tiles
@@ -559,7 +556,7 @@ def process_tile(
 
     if w_unions_cats:
         obj_in_tile = read_unions_cat(unions_table_dir, tile)
-        dwarfs_in_tile = catalog.loc[catalog['tile'] == tile]
+        dwarfs_in_tile = read_dwarf_cat(dwarf_cat, tile)
         obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat, lens_cat)
         if obj_in_tile is None:
             logging.info(f'No objects cut out in tile {tile}.')
@@ -620,18 +617,16 @@ def process_tile(
             # release memory
             cutout = None
     else:
-        obj_in_tile = catalog.loc[catalog['tile'] == tile]
-
+        obj_in_tile = catalog.loc[catalog['tile'] == tile].reset_index(drop=True)
+        dwarfs_in_tile = read_dwarf_cat(dwarf_cat, tile)
         if os.path.exists(save_path):
             logging.info(f'Tile {tile} has already been processed.')
             return 0, len(obj_in_tile), len(obj_in_tile), True
 
-        obj_in_tile = add_labels(obj_in_tile, obj_in_tile, z_class_cat, lens_cat)
+        obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat, lens_cat)
         if obj_in_tile is None:
             logging.info(f'No objects cut out in tile {tile}.')
             return 0, 0, 0, 0
-        obj_in_tile['tile'] = str(tile)
-        obj_in_tile['bands'] = str(avail_bands)
 
         cutout = make_cutouts_all_bands(
             availability, tile, obj_in_tile, download_dir, in_dict, size
@@ -673,7 +668,7 @@ def process_tiles_in_batches(tile_list, batch_size):
 
 def main(
     cat_default,
-    cat_processed,
+    dwarf_cat,
     z_class_cat,
     lens_cat,
     cat_master,
@@ -724,13 +719,14 @@ def main(
         logging.info(f'Coordinates received from the command line: {formatted_coordinates}')
 
         catalog = df_coordinates
-        df_coordinates.to_csv('df_coordinates_test.csv', index=False)
+        catalog_name = 'coordinates'
         coord_c = SkyCoord(
             catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs'
         )
     elif dataframe_path is not None:
         logging.info('Dataframe received from command line.')
         catalog = pd.read_csv(dataframe_path)
+        catalog_name = os.path.basename(dataframe_path).split('.')[0]
         # if no ra_key, dec_key, id_key are provided, use the default ones
         if ra_key is None or dec_key is None or id_key is None:
             ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
@@ -751,7 +747,8 @@ def main(
         )
     elif w_unions_cats:
         logging.info('Using UNIONS catalogs.')
-        catalog = cat_processed
+        catalog = pd.DataFrame()
+        catalog_name = ''
         ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
         coord_c = SkyCoord(
             catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs'
@@ -761,6 +758,7 @@ def main(
             'No coordinates or DataFrame provided. Using coordinates from default DataFrame.'
         )
         catalog = cat_default
+        catalog_name = os.path.basename(cat_default).split('.')[0]
         ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
         coord_c = SkyCoord(
             catalog[ra_key].values, catalog[dec_key].values, unit='deg', frame='icrs'
@@ -853,7 +851,7 @@ def main(
                 start_download = time.time()
                 if download_tile_for_bands_parallel(availability, tile, in_dict, download_dir):
                     logging.info(
-                        f'Tile downloaded in all available bands. Took {(time.time() - start_download) / 60} minutes.'
+                        f'Tile downloaded in all available bands. Took {np.round((time.time() - start_download) / 60, 3)} minutes.'
                     )
                 else:
                     logging.info(f'Tile {tile} failed to download.')
@@ -873,6 +871,7 @@ def main(
                     availability,
                     tile,
                     catalog,
+                    dwarf_cat,
                     z_class_cat,
                     lens_cat,
                     processed,
@@ -916,7 +915,7 @@ def main(
             update_master_cat(cat_master, table_dir, tile_batch)
 
         if len(failed_tiles) == 0:
-            logging.info('Tile batch processed sucessfully, deleting raw data..')
+            logging.info('Tile batch processed sucessfully, deleting raw data.')
             for tile in tile_batch:
                 tile_folder = os.path.join(
                     download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
@@ -924,7 +923,7 @@ def main(
                 if os.path.exists(tile_folder):
                     shutil.rmtree(tile_folder)
         else:
-            logging.info('Tile batch processed with errors, keeping raw data..')
+            logging.info('Tile batch processed with errors, keeping raw data.')
 
         logging.info(
             f'\nProcessing report:\nTiles processed: {len(tile_batch)}\nCutouts created: {total_cutouts_count}'
@@ -938,10 +937,11 @@ def main(
         )
 
         # save the catalog with the suffix 'processed'
-        catalog.to_csv(
-            os.path.join(table_dir, catalog_file.split('.')[0] + '_processed_test.csv'),
-            index=False,
-        )
+        if not catalog.empty:
+            catalog.to_csv(
+                os.path.join(table_dir, catalog_name + '_processed.csv'),
+                index=False,
+            )
         # plot all cutouts or just a random one
         if with_plot:
             if plot_random_cutout:
@@ -1014,7 +1014,7 @@ if __name__ == '__main__':
     # define the arguments for the main function
     arg_dict_main = {
         'cat_default': catalog_script,
-        'cat_processed': catalog_script_processed,
+        'dwarf_cat': dwarf_catalog,
         'z_class_cat': redshift_class_catalog,
         'lens_cat': lens_catalog,
         'cat_master': catalog_master,
@@ -1059,4 +1059,6 @@ if __name__ == '__main__':
         elapsed_string.split(':')[1],
         elapsed_string.split(':')[2],
     )
-    logging.info(f'Done! Execution took {hours} hours, {minutes} minutes, and {seconds} seconds.')
+    logging.info(
+        f'Done! Execution took {hours} hours, {minutes} minutes, and {np.round(float(seconds),2)} seconds.'
+    )

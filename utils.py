@@ -305,6 +305,27 @@ def read_unions_cat(unions_table_dir, tile_nums):
     return df
 
 
+def read_dwarf_cat(dwarf_cat, tile_nums):
+    """
+    Read known dwarfs in tile to dataframe.
+
+    Args:
+        dwarf_cat (str): path to dwarf catalog
+        tile_nums (tuple): tile numbers
+
+    Returns:
+        cat (dataframe): pandas dataframe containing the dwarf catalog for the specified tile
+    """
+    logging.info(f'Reading dwarf catalog for tile {tile_nums}')
+    try:
+        df = pd.read_csv(dwarf_cat)
+        df = df[df['tile'] == str(tuple(tile_nums))].reset_index(drop=True)
+    except FileNotFoundError:
+        logging.error(f'File not found: {dwarf_cat}')
+        df = None
+    return df
+
+
 def match_cats(df_det, df_label, max_sep=15.0):
     """
     Match detections to known objects, return matches, unmatches
@@ -323,12 +344,12 @@ def match_cats(df_det, df_label, max_sep=15.0):
     c_label = SkyCoord(df_label['ra'], df_label['dec'], unit=u.deg)
 
     idx, d2d, _ = c_label.match_to_catalog_3d(c_det)
+    # sep_constraint is a list of True/False
     sep_constraint = d2d < max_sep * u.arcsec
     label_matches = df_label[sep_constraint].reset_index(drop=True)
     label_unmatches = df_label[~sep_constraint].reset_index(drop=True)
-    det_matching_idx = idx[sep_constraint]
+    det_matching_idx = idx[sep_constraint]  # det_matching_idx is a list of indices
     det_matches = df_det.loc[det_matching_idx].reset_index(drop=True)
-
     return det_matching_idx, label_matches, label_unmatches, det_matches
 
 
@@ -372,6 +393,8 @@ def add_labels(det_df, dwarfs_df, z_class_cat, lens_cat):
     Returns:
         det_df (dataframe): detections dataframe with labels
     """
+    det_df = det_df.copy()
+
     logging.info('Adding labels to the detections dataframe.')
     # define minimum and maximum ra and dec values to filter the label catalog
     margin = 0.0014  # extend the ra and dec ranges by this amount in degrees
@@ -389,21 +412,24 @@ def add_labels(det_df, dwarfs_df, z_class_cat, lens_cat):
     det_idx_z_class = det_idx_z_class.astype(np.int32)  # make sure index is int
 
     # add redshift and class labels to detections dataframe
-    det_df['class'] = np.nan
-    det_df['zspec'] = np.nan
+    det_df.loc[:, 'class'] = np.nan
+    det_df.loc[:, 'zspec'] = np.nan
     det_df.loc[det_idx_z_class, 'class'] = label_matches_z_class['cspec'].values
     det_df.loc[det_idx_z_class, 'zspec'] = label_matches_z_class['zspec'].values
 
     logging.info(
-        f'Number of detection matches for z/class: {len(det_idx_z_class)}, number of label matches for z/class: {len(label_matches_z_class)}'
+        f'Number of detection matches for z/class: {len(det_idx_z_class)}, number of label matches for z/class: {len(label_matches_z_class)} for tile {det_df["tile"].iloc[0]}'
     )
 
     logging.info(
-        f'Found {np.count_nonzero(~np.isnan(label_matches_z_class["zspec"]))} matching objects in the redshift/class catalog.'
+        f'Found {np.count_nonzero(~np.isnan(label_matches_z_class["zspec"]))} matching objects in the redshift/class catalog for tile {det_df["tile"].iloc[0]}.'
     )
 
     logging.info(
-        f'Added {np.count_nonzero(~np.isnan(det_df["zspec"]))} to the detection dataframe.'
+        f'Added {np.count_nonzero(~np.isnan(det_df["zspec"]))} redshift labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
+    )
+    logging.info(
+        f'Added {np.count_nonzero(~np.isnan(det_df["class"]))} class labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
     )
 
     # read the lens catalog
@@ -412,32 +438,42 @@ def add_labels(det_df, dwarfs_df, z_class_cat, lens_cat):
     det_idx_lens, label_matches_lens, _, _ = match_cats(det_df, lens_df, max_sep=1.0)
     det_idx_lens = det_idx_lens.astype(np.int32)  # make sure index is int
     # add lens labels to detections dataframe
-    det_df['lens'] = np.nan
+    det_df.loc[:, 'lens'] = np.nan
     det_df.loc[det_idx_lens, 'lens'] = 1
 
     logging.info(
-        f'Number of detection matches for lenses: {len(det_idx_lens)}, number of label matches for lenses: {len(label_matches_lens)}'
+        f'Number of detection matches for lenses: {len(det_idx_lens)}, number of label matches for lenses: {len(label_matches_lens)} for tile {det_df["tile"].iloc[0]}.'
     )
 
-    logging.info(f'Found {len(label_matches_lens)} matching objects in the lens catalog.')
+    logging.info(
+        f'Found {len(label_matches_lens)} matching objects in the lens catalog for tile {det_df["tile"].iloc[0]}.'
+    )
 
-    logging.info(f'Added {np.count_nonzero(~np.isnan(det_df["lens"]))} to the detection dataframe.')
+    logging.info(
+        f'Added {np.count_nonzero(~np.isnan(det_df["lens"]))} lens labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
+    )
 
     # match detections to dwarf catalog
     det_idx_lsb, _, lsb_unmatches, _ = match_cats(det_df, dwarfs_df, max_sep=10.0)
     # add lsb labels to detections dataframe
-    det_df['lsb'] = np.nan
+    det_df.loc[:, 'lsb'] = np.nan
     det_df.loc[det_idx_lsb, 'lsb'] = 1
+    det_df.loc[det_idx_lsb, 'class'] = 2  # dwarfs are galaxies
+
+    logging.info(
+        f'Added {np.count_nonzero(~np.isnan(det_df["lsb"]))} LSB labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
+    )
 
     if len(lsb_unmatches) > 0:
-        logging.info(f'Found undetected but known dwarfs in tile {dwarfs_df.tile[0]}.')
-        lsb_unmatches['lsb'] = 1  # dwarfs are LSB
-        lsb_unmatches['class'] = 2  # dwarfs are galaxies
+        logging.info(
+            f'Found {len(lsb_unmatches)} undetected but known dwarfs in tile {dwarfs_df.tile[0]}.'
+        )
+        lsb_unmatches.loc[:, 'lsb'] = 1  # dwarfs are LSB
+        lsb_unmatches.loc[:, 'class'] = 2  # dwarfs are galaxies
         # augment detections dataframe with undetected but known dwarfs
         common_columns = det_df.columns.intersection(lsb_unmatches.columns)
-        logging.info(f'Common columns are: {str(common_columns)})')
         det_df = pd.concat([det_df, lsb_unmatches[common_columns]], ignore_index=True)
-    logging.info('Added labels to the detections dataframe.')
+    logging.info('Finished adding labels to the detections dataframe.')
     return det_df
 
 
@@ -592,17 +628,75 @@ def update_processed(file_name, file_path):
         logging.error(f'Error writing to file: {e}')
 
 
-def update_h5_labels(h5_path, unions_det_dir, z_class_cat, lens_cat):
+def update_h5_labels_parallel(tile_nums, h5_path_list, unions_det_dir, z_class_cat, lens_cat):
     """
     Update the labels in the cutout files in the HDF5 file based on better matching.
 
     Args:
-        h5_path (str): path to HDF5 file
+        tile_nums (tuple): tile numbers
+        h5_path_list (str): list of HDF5 file paths for a given tile
         unions_det_dir (str): path to directory containing unions catalogs
         z_class_cat (dataframe): dataframe containing the redshift and classification
         lens_cat (dataframe): dataframe containing known lenses
     """
-    logging.info(f'Updating labels in {h5_path}.')
+
+    # read detections for the tile into a dataframe
+    obj_df = read_unions_cat(unions_det_dir, tile_nums)
+    if obj_df is not None:
+        margin = 0.0014  # extend the ra and dec ranges by this amount in degrees
+        ra_range = (np.min(obj_df['ra']) - margin, np.max(obj_df['ra']) + margin)
+        dec_range = (np.min(obj_df['dec'] - margin), np.max(obj_df['dec'] + margin))
+
+        # read the label catalog
+        class_z_df = read_parquet(
+            z_class_cat,
+            ra_range=ra_range,
+            dec_range=dec_range,
+        )
+        # match detections to redshift and class catalog
+        det_idx, label_matches, _, _ = match_cats(obj_df, class_z_df, max_sep=1.0)
+        # add redshift and class labels to detections dataframe
+        obj_df['class'] = np.nan
+        obj_df['zspec'] = np.nan
+        det_idx = det_idx.astype(np.int32)  # make sure index is int
+        obj_df.loc[det_idx, 'class'] = label_matches['cspec'].values
+        obj_df.loc[det_idx, 'zspec'] = label_matches['zspec'].values
+
+        # read the lens catalog
+        lens_df = read_parquet(lens_cat, ra_range=ra_range, dec_range=dec_range)
+        # match detections to lens catalog
+        det_idx_lens, label_matches_lens, _, _ = match_cats(obj_df, lens_df, max_sep=1.0)
+        det_idx_lens = det_idx_lens.astype(np.int32)  # make sure index is int
+        # add lens labels to detections dataframe
+        obj_df['lens'] = np.nan
+        obj_df.loc[det_idx_lens, 'lens'] = 1
+
+        # change to float32 for matching
+        obj_df['ra'] = obj_df['ra'].astype('float32')
+        obj_df['dec'] = obj_df['dec'].astype('float32')
+        obj_df['zspec'] = obj_df['zspec'].astype('float32')
+        obj_df['class'] = obj_df['class'].astype('float32')
+    else:
+        logging.info(f'No UNIONS catalog for tile {tile_nums} found.')
+
+    with ThreadPoolExecutor() as executor:
+        executor.map(
+            update_single_h5,
+            h5_path_list,
+            [obj_df] * len(h5_path_list),
+        )
+
+
+def update_single_h5(h5_path, obj_dataframe):
+    """
+    Update the labels in one HDF5 file.
+
+    Args:
+        h5_path (str): path to HDF5 file
+        obj_dataframe (dataframe): detection dataframe
+    """
+    file_name = os.path.basename(h5_path)
+    logging.info(f'Updating labels in {file_name}.')
     with h5py.File(h5_path, 'r+') as hf:
         try:
             ra = hf['ra']
@@ -610,102 +704,76 @@ def update_h5_labels(h5_path, unions_det_dir, z_class_cat, lens_cat):
 
             # create pandas dataframe
             df = pd.DataFrame({'ra': ra, 'dec': dec})
-            obj_df = read_unions_cat(unions_det_dir, hf['tile'][:])  # type: ignore
 
-            if obj_df is not None:
-                margin = 0.0014  # extend the ra and dec ranges by this amount in degrees
-                ra_range = (np.min(obj_df['ra']) - margin, np.max(obj_df['ra']) + margin)
-                dec_range = (np.min(obj_df['dec'] - margin), np.max(obj_df['dec'] + margin))
+            # get part of the obj_df where ra and dec are equal to ra/dec in df
+            merged_df = pd.merge(df, obj_dataframe, on=['ra', 'dec'], how='inner')
 
-                # read the label catalog
-                class_z_df = read_parquet(
-                    z_class_cat,
-                    ra_range=ra_range,
-                    dec_range=dec_range,
-                )
-                # match detections to redshift and class catalog
-                det_idx, label_matches, _, _ = match_cats(obj_df, class_z_df, max_sep=1.0)
-                # add redshift and class labels to detections dataframe
-                obj_df['class'] = np.nan
-                obj_df['zspec'] = np.nan
-                det_idx = det_idx.astype(np.int32)  # make sure index is int
-                obj_df.loc[det_idx, 'class'] = label_matches['cspec'].values
-                obj_df.loc[det_idx, 'zspec'] = label_matches['zspec'].values
+            dataset_names = ['zspec', 'class', 'lens']  # Specify the dataset names
+            # create empty dataframe
+            h5_df = pd.DataFrame()
+            # Check if datasets exist and create a DataFrame
+            for dataset_name in dataset_names:
+                try:
+                    h5_df[dataset_name] = hf[dataset_name]
+                except KeyError:
+                    logging.warning(
+                        f"Dataset '{dataset_name}' does not exist in the HDF5 file {file_name}."
+                    )
+                    logging.info(f'Creating dataset {dataset_name} in the HDF5 file {file_name}.')
+                    h5_df[dataset_name] = np.nan * np.ones(len(df))
 
-                # read the lens catalog
-                lens_df = read_parquet(lens_cat, ra_range=ra_range, dec_range=dec_range)
-                # match detections to lens catalog
-                det_idx_lens, label_matches_lens, _, _ = match_cats(obj_df, lens_df, max_sep=1.0)
-                det_idx_lens = det_idx_lens.astype(np.int32)  # make sure index is int
-                # add lens labels to detections dataframe
-                obj_df['lens'] = np.nan
-                obj_df.loc[det_idx_lens, 'lens'] = 1
+            z_matching = np.count_nonzero(
+                merged_df['zspec'].fillna('nan') == h5_df['zspec'].fillna('nan')
+            )
+            class_matching = np.count_nonzero(
+                merged_df['class'].fillna('nan') == h5_df['class'].fillna('nan')
+            )
 
-                logging.info(f'There are {len(df)} objects in the HDF5 file.')
-                # change to float32 for matching
-                obj_df['ra'] = obj_df['ra'].astype('float32')
-                obj_df['dec'] = obj_df['dec'].astype('float32')
-                obj_df['zspec'] = obj_df['zspec'].astype('float32')
-                obj_df['class'] = obj_df['class'].astype('float32')
-                # get part of the obj_df where ra and dec are equal to ra/dec in df
-                merged_df = pd.merge(df, obj_df, on=['ra', 'dec'], how='inner')
+            lens_matching = np.count_nonzero(
+                merged_df['lens'].fillna('nan') == h5_df['lens'].fillna('nan')
+            )
 
-                dataset_names = ['zspec', 'class', 'lens']  # Specify the dataset names
-                # create empty dataframe
-                h5_df = pd.DataFrame()
-                # Check if datasets exist and create a DataFrame
-                for dataset_name in dataset_names:
-                    try:
-                        h5_df[dataset_name] = hf[dataset_name]
-                    except KeyError:
-                        logging.warning(
-                            f"Dataset '{dataset_name}' does not exist in the HDF5 file."
-                        )
-                        logging.info(f'Creating dataset {dataset_name} in the HDF5 file.')
-                        h5_df[dataset_name] = np.nan * np.ones(len(df))
+            logging.info(
+                f'Found {np.count_nonzero(~merged_df["zspec"].isna())} objects with available redshift labels for {file_name}.'
+            )
+            logging.info(
+                f'Found {np.count_nonzero(~merged_df["class"].isna())} objects with available class labels for {file_name}.'
+            )
+            logging.info(
+                f'Found {np.count_nonzero(~merged_df["lens"].isna())} objects that are known lenses for {file_name}.'
+            )
 
-                z_matching = np.count_nonzero(
-                    merged_df['zspec'].fillna('nan') == h5_df['zspec'].fillna('nan')
-                )
-                class_matching = np.count_nonzero(
-                    merged_df['class'].fillna('nan') == h5_df['class'].fillna('nan')
-                )
+            logging.info(f'File {file_name}: changed redshifts: {len(df)-z_matching}/{len(df)}')
+            logging.info(f'File {file_name}: changed classes: {len(df)-class_matching}/{len(df)}')
+            logging.info(
+                f'File {file_name}: changed lens labels: {len(df)-lens_matching}/ {len(df)}'
+            )
 
-                lens_matching = np.count_nonzero(
-                    merged_df['lens'].fillna('nan') == h5_df['lens'].fillna('nan')
-                )
+            for dataset_name in dataset_names:
+                if dataset_name in hf.keys():
+                    hf[dataset_name][:] = merged_df[dataset_name].values  # type: ignore
+                else:
+                    hf.create_dataset(
+                        dataset_name, data=merged_df[dataset_name].values.astype(np.float32)
+                    )
 
-                logging.info(
-                    f'Found {np.count_nonzero(~merged_df["zspec"].isna())} objects with available redshift labels.'
-                )
-                logging.info(
-                    f'Found {np.count_nonzero(~merged_df["class"].isna())} objects with available class labels.'
-                )
-                logging.info(
-                    f'Found {np.count_nonzero(~merged_df["lens"].isna())} objects that are known lenses.'
-                )
-
-                logging.info(f'Changed redshifts: {len(df)-z_matching}/{len(df)}')
-                logging.info(f'Changed classes: {len(df)-class_matching}/{len(df)}')
-                logging.info(f'Changed lens labels: {len(df)-lens_matching}/ {len(df)}')
-
-                for dataset_name in dataset_names:
-                    if dataset_name in hf.keys():
-                        hf[dataset_name][:] = merged_df[dataset_name].values  # type: ignore
-                    else:
-                        hf.create_dataset(
-                            dataset_name, data=merged_df[dataset_name].values.astype(np.float32)
-                        )
-
-                logging.info(f'Updated labels in {h5_path}.')
-            else:
-                logging.info(f'No UNIONS catalog for tile {hf["tile"]} found.')
+            logging.info(f'Updated labels in {file_name}.')
 
         except KeyError:
-            logging.error(f'No ra and dec in {h5_path}.')
+            logging.error(f'Failed reading {file_name}.')
 
 
 def download_decals_cutouts(ra, dec, pixscale, output_folder='downloads', concurrent_downloads=1):
+    """
+    Download cutouts from the Legacy Survey.
+
+    Args:
+        ra (numpy.ndarray): right ascention
+        dec (numpy.ndarray): declination
+        pixscale (float): pixel scale in arcseconds/pixel
+        output_folder (str, optional): where to save the files. Defaults to 'downloads'.
+        concurrent_downloads (int, optional): number of files to download in parallel. Defaults to 1.
+    """
     base_url = 'https://www.legacysurvey.org/viewer/jpeg-cutout'
 
     # Ensure inputs are NumPy arrays
@@ -739,3 +807,89 @@ def download_decals_cutouts(ra, dec, pixscale, output_folder='downloads', concur
         # Wait for all downloads to complete
         for future in tqdm(futures, desc='Downloading', unit='file'):
             future.result()
+
+
+def create_master_cat_from_file(cat_master, table_dir, h5_path_list, tile_nums):
+    """
+    Generate a master catalog of all cut out objects from the hdf5 files.
+
+    Args:
+        cat_master (str): path to master catalog
+        table_dir (str): table directory
+        h5_path_list (list): list of paths to hdf5 files
+        tile_nums (tuple): tile numbers
+    """
+    df_tile = pd.DataFrame()
+
+    for h5_path in h5_path_list:
+        with h5py.File(h5_path, 'r') as hf:
+            try:
+                datasets_dict = {}
+
+                # Iterate over the keys (dataset names) in the HDF5 file
+                for dataset_name in hf.keys():
+                    if dataset_name == 'images':
+                        continue
+                    if not dataset_name == 'tile':
+                        # Read the dataset into a NumPy array
+                        data = hf[dataset_name][:]
+                    else:
+                        # Repeat tile numbers in array
+                        data = np.full(len(hf['ra'][:]), str(tuple(hf[dataset_name][:])))
+
+                    # Store the dataset in the dictionary with its name as the key
+                    datasets_dict[dataset_name] = data
+            except KeyError:
+                logging.error(f'Failed reading {os.path.basename(h5_path)}.')
+
+        # Create a Pandas DataFrame from the dictionary
+        df = pd.DataFrame(datasets_dict)
+        if not df.empty:
+            df_order = ['ra', 'dec'] + [col for col in df.columns if col not in ['ra', 'dec']]
+            df = df[df_order]
+            df_tile = pd.concat([df_tile, df], ignore_index=True)
+        else:
+            logging.warning(f'No objects found in {os.path.basename(h5_path)}.')
+
+    if not df_tile.empty:
+        # update master catalog if it exists
+        if os.path.exists(cat_master):
+            master_table = pq.read_table(cat_master, memory_map=True).to_pandas()
+            master_table_updated = pd.concat([master_table, df_tile], ignore_index=True)
+
+            # Check for duplicate rows
+            duplicate_rows = master_table_updated[master_table_updated.duplicated()]
+
+            if not duplicate_rows.empty:
+                logging.info(f'Duplicate rows found in tile {tile_nums}. Dropping them.')
+
+                # Remove duplicate rows
+                master_table_updated = master_table_updated.drop_duplicates()
+            else:
+                logging.info(f'No duplicate rows found in tile {tile_nums}. Moving on.')
+
+            master_table_updated.to_parquet(cat_master, index=False)
+        # create a new master catalog if it does not exist yet
+        else:
+            df_tile.to_parquet(cat_master, index=False)
+    else:
+        logging.warning(f'No objects found in tile {tile_nums}.')
+
+
+def extract_numbers(file_name):
+    """
+    Extract the tile numbers from the file name.
+
+    Args:
+        file_name (str): The name of the file.
+
+    Returns:
+        tuple: The tile numbers.
+    """
+    try:
+        # extract tile numbers
+        substring = file_name.split('_')[:2]
+        # convert to integers
+        return tuple(map(int, substring))
+    except (ValueError, IndexError):
+        return None

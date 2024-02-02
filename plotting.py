@@ -18,10 +18,17 @@ def plot_cutout(
     :param save_plot: save plot
     :return: cutout plot
     """
+    title_map = {
+        'cfis-u': 'CFHT-u',
+        'whigs-g': 'HSC-g',
+        'cfis_lsb-r': 'CFHT-LSB-r',
+        'ps-i': 'PS-i',
+        'wishes-z': 'HSC-z',
+    }
     shape = cutout['images'].shape
     if random_obj_index:
         image_data = cutout['images'][random_obj_index].reshape(1, shape[1], shape[2], shape[3])
-        obj_ids = cutout['cfis_id'][random_obj_index].decode('utf-8')
+        obj_ids = [cutout['cfis_id'][random_obj_index].decode('utf-8')]
     else:
         image_data = cutout['images']
         obj_ids = np.array([x.decode('utf-8') for x in cutout['cfis_id']])
@@ -36,18 +43,21 @@ def plot_cutout(
     # Loop through objects and filter bands, and plot each image
     for i in range(n_objects):  # Number of objects
         for j, band in enumerate(in_dict.keys()):  # Number of filter bands
-            filter_name = in_dict[band]['band']
             ax = axes[i, j]
-
             # Get the image data for the current object and filter band
             image = image_data[i, j]
             # Display the image
+            image[image < -10] = np.nan
+            image[image > 1300] = np.nanmax(image)
             norm = simple_norm(image, 'sqrt', percent=98.0)
-            ax.imshow(image, norm=norm, cmap='gray_r', origin='lower')  # Adjust the cmap as needed
-            ax.set_title(f'{obj_ids[i]}, {filter_name}')
-
-            # Optionally, you can turn off axis labels if they are not needed
-            ax.axis('off')
+            image[np.isnan(image)] = 0.0
+            ax.imshow(image, norm=norm, cmap='viridis', origin='lower')
+            if i == 0:
+                ax.set_title(f'{title_map[band]}', fontsize=45, fontweight='bold')
+            if j == 0:
+                ax.set_ylabel(f'{obj_ids[i]}', fontsize=20)
+            ax.set_xticks([])
+            ax.set_yticks([])
 
     plt.tight_layout()
 

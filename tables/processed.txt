@@ -232,7 +232,6 @@
 137_330_224x224_ugriz_batch_4.h5
 284_284_224x224_ugri_batch_1.h5
 353_252_224x224_ugri_batch_5.h5
-351_272_224x224_ugri_batch_4.h5
 276_300_224x224_ugriz_batch_1.h5
 254_271_224x224_ugri_batch_7.h5
 197_278_224x224_ugri_batch_1.h5
@@ -2198,7 +2197,6 @@
 417_250_224x224_ugri_batch_2.h5
 134_327_224x224_ugri_batch_4.h5
 399_247_224x224_ugri_batch_1.h5
-202_314_224x224_ugriz_batch_1.h5
 269_273_224x224_ugri_batch_1.h5
 378_258_224x224_ugri_batch_2.h5
 206_298_224x224_ugriz_batch_7.h5
