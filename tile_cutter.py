@@ -95,7 +95,7 @@ band_dict = {
 
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = True
+update_tiles = False
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -105,6 +105,8 @@ else:
 at_least = False
 # show stats on currently available tiles, remember to update
 show_tile_statistics = True
+# show number of tiles available including this band
+combinations_with_band = 'cfis_lsb-r'
 # print per tile availability
 print_per_tile_availability = False
 # use UNIONS catalogs to make the cutouts
@@ -112,7 +114,7 @@ with_unions_catalogs = False
 # download the tiles
 download_tiles = True
 # Plot cutouts from one of the tiles after execution
-with_plot = True
+with_plot = False
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
 plot_random_cutout = False
 # Show plot
@@ -183,7 +185,7 @@ logging.basicConfig(
 
 ### tile parameters ###
 band_constraint = 3  # define the minimum number of bands that should be available for a tile
-tile_batch_size = 5  # number of tiles to process in parallel
+tile_batch_size = 7  # number of tiles to process in parallel
 object_batch_size = 5000  # number of objects to process at a time
 cutout_size = 224
 num_workers = 9  # specifiy the number of parallel workers following machine capabilities
@@ -678,6 +680,7 @@ def main(
     id_key_default,
     tile_info_dir,
     in_dict,
+    comb_w_band,
     at_least_key,
     band_constr,
     download_dir,
@@ -777,7 +780,7 @@ def main(
         build_tree(availability.unique_tiles, tile_info_dir)
     # show stats on the currently available tiles
     if show_stats:
-        availability.stats()
+        availability.stats(band=comb_w_band)
     # get the tiles to cut out from the unions catalogs
     if w_unions_cats:
         unique_tiles, tiles_x_bands = tiles_from_unions_catalogs(
@@ -910,7 +913,7 @@ def main(
                     failed_tiles.append(tile)
 
         # skip updating master catalog if all tile batches have already been processed
-        if not result[3]:
+        if w_unions_cats and not result[3]:
             # update the master catalog
             update_master_cat(cat_master, table_dir, tile_batch)
 
@@ -1024,6 +1027,7 @@ if __name__ == '__main__':
         'id_key_default': id_key_script,
         'tile_info_dir': tile_info_directory,
         'in_dict': band_dict,
+        'comb_w_band': combinations_with_band,
         'at_least_key': at_least,
         'band_constr': band_constraint,
         'download_dir': download_directory,

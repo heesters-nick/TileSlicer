@@ -1,8 +1,10 @@
 import glob
 import logging
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from itertools import combinations
 
 import h5py
 import numpy as np
@@ -197,7 +199,7 @@ class TileAvailability:
             self.availability_matrix[:, list(self.band_dict.keys()).index(band)] == 1
         ]
 
-    def stats(self):
+    def stats(self, band):
         print('\nNumber of currently available tiles per band:\n')
         max_band_name_length = max(map(len, self.band_dict.keys()))  # for output format
         for band_name, count in zip(
@@ -209,7 +211,25 @@ class TileAvailability:
         for bands_available, count in sorted(self.counts.items(), reverse=True):
             print(f'In {bands_available} bands: {count}')
 
-        print(f'\nNumber of unique tiles available:\n{len(self.unique_tiles)}')
+        print(f'\nNumber of unique tiles available:\n\n{len(self.unique_tiles)}')
+
+        if band:
+            print(f'\nNumber of tiles available in combinations containing the {band}-band:\n')
+
+            all_bands = list(self.band_dict.keys())
+            all_combinations = []
+            for r in range(1, len(all_bands) + 1):
+                all_combinations.extend(combinations(all_bands, r))
+            combinations_w_r = [x for x in all_combinations if band in x]
+
+            for band_combination in combinations_w_r:
+                band_combination_str = ''.join([str(x).split('-')[-1] for x in band_combination])
+                band_indices = [
+                    list(self.band_dict.keys()).index(band_c) for band_c in band_combination
+                ]
+                common_tiles = np.sum(self.availability_matrix[:, band_indices].all(axis=1))
+                print(f'{band_combination_str}: {common_tiles}')
+            print('\n')
 
 
 def read_h5(cutout_dir):
@@ -488,7 +508,8 @@ def save_tile_cat(table_dir, tile_nums, obj_in_tile):
     """
     logging.info(f'Saving tile catalog for tile {tile_nums} to a temporary file.')
     temp_path = os.path.join(table_dir, f'cat_temp_{tile_nums[0]}_{tile_nums[1]}.parquet')
-    obj_in_tile.to_parquet(temp_path, index=False)
+    columns = ['ra', 'dec', 'cfis_id', 'class', 'lens', 'lsb', 'mag_r', 'tile', 'zspec', 'bands']
+    obj_in_tile[columns].to_parquet(temp_path, index=False)
 
 
 def update_master_cat(cat_master, table_dir, batch_tile_list):
@@ -823,6 +844,13 @@ def create_master_cat_from_file(cat_master, table_dir, h5_path_list, tile_nums):
 
     for h5_path in h5_path_list:
         with h5py.File(h5_path, 'r') as hf:
+            pattern = r'224x224_(.*?)_batch'
+            # Extracting characters using regex
+            match = re.search(pattern, h5_path)
+            if match:
+                av_bands = match.group(1)
+            else:
+                logging.error(f'The available bands could not be extracted from path {h5_path}')
             try:
                 datasets_dict = {}
 
@@ -839,6 +867,8 @@ def create_master_cat_from_file(cat_master, table_dir, h5_path_list, tile_nums):
 
                     # Store the dataset in the dictionary with its name as the key
                     datasets_dict[dataset_name] = data
+
+                datasets_dict['bands'] = np.full(len(hf['ra'][:]), av_bands)
             except KeyError:
                 logging.error(f'Failed reading {os.path.basename(h5_path)}.')
 
