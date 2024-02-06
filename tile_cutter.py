@@ -188,7 +188,7 @@ band_constraint = 3  # define the minimum number of bands that should be availab
 tile_batch_size = 7  # number of tiles to process in parallel
 object_batch_size = 5000  # number of objects to process at a time
 cutout_size = 224
-num_workers = 9  # specifiy the number of parallel workers following machine capabilities
+num_workers = 12  # specifiy the number of parallel workers following machine capabilities
 
 
 def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):
