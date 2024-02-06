@@ -185,7 +185,7 @@ logging.basicConfig(
 
 ### tile parameters ###
 band_constraint = 3  # define the minimum number of bands that should be available for a tile
-tile_batch_size = 5  # number of tiles to process in parallel
+tile_batch_size = 7  # number of tiles to process in parallel
 object_batch_size = 5000  # number of objects to process at a time
 cutout_size = 224
 num_workers = 9  # specifiy the number of parallel workers following machine capabilities
