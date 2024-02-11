@@ -424,7 +424,7 @@ def make_cutouts_all_bands(
     else:
         logging.info(f'Cutting out objects in tile {tile}.')
     avail_idx = availability.get_availability(tile)[1]
-    cutout = np.zeros((len(obj_in_tile), len(in_dict), size, size))
+    cutout = np.zeros((len(obj_in_tile), len(in_dict), size, size), dtype=np.float32)
     tile_dir = download_dir + f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
     for j, band in enumerate(np.array(list(in_dict.keys()))[avail_idx]):
         prefix = in_dict[band]['name']
@@ -434,7 +434,7 @@ def make_cutouts_all_bands(
         zfill = in_dict[band]['zfill']
         tile_fitsfilename = f'{prefix}{delimiter}{str(tile[0]).zfill(zfill)}{delimiter}{str(tile[1]).zfill(zfill)}{suffix}'
         with fits.open(os.path.join(tile_dir, tile_fitsfilename), memmap=True) as hdul:
-            data = hdul[fits_ext].data  # type: ignore
+            data = hdul[fits_ext].data.astype(np.float32)  # type: ignore
         for i, (x, y) in enumerate(zip(obj_in_tile.x.values, obj_in_tile.y.values)):
             cutout[i, j] = make_cutout(data, x, y, size)
             # if tile == (247, 255):

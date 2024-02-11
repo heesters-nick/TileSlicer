@@ -844,31 +844,33 @@ def create_master_cat_from_file(cat_master, table_dir, h5_path_list, tile_nums):
 
     for h5_path in h5_path_list:
         with h5py.File(h5_path, 'r') as hf:
+            # Extracting available tiles
             pattern = r'224x224_(.*?)_batch'
-            # Extracting characters using regex
             match = re.search(pattern, h5_path)
             if match:
                 av_bands = match.group(1)
             else:
                 logging.error(f'The available bands could not be extracted from path {h5_path}')
-            try:
-                datasets_dict = {}
+                av_bands = ''
 
+            # Initialize empty dictionary to store datasets
+            datasets_dict = {}
+            try:
                 # Iterate over the keys (dataset names) in the HDF5 file
                 for dataset_name in hf.keys():
                     if dataset_name == 'images':
                         continue
                     if not dataset_name == 'tile':
                         # Read the dataset into a NumPy array
-                        data = hf[dataset_name][:]
+                        data = hf[dataset_name][:]  # type: ignore
                     else:
                         # Repeat tile numbers in array
-                        data = np.full(len(hf['ra'][:]), str(tuple(hf[dataset_name][:])))
+                        data = np.full(len(hf['ra'][:]), str(tuple(hf[dataset_name][:])))  # type: ignore
 
                     # Store the dataset in the dictionary with its name as the key
                     datasets_dict[dataset_name] = data
 
-                datasets_dict['bands'] = np.full(len(hf['ra'][:]), av_bands)
+                datasets_dict['bands'] = np.full(len(hf['ra'][:]), av_bands)  # type: ignore
             except KeyError:
                 logging.error(f'Failed reading {os.path.basename(h5_path)}.')
 
@@ -922,4 +924,4 @@ def extract_numbers(file_name):
         # convert to integers
         return tuple(map(int, substring))
     except (ValueError, IndexError):
-        return None
+        return ()
