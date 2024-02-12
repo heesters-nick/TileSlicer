@@ -327,8 +327,9 @@ def download_tile_one_band(tile_numbers, tile_fitsname, final_path, temp_path, v
         result.check_returncode()
 
         os.rename(temp_path, final_path)
-        logging.info(f'Successfully downloaded tile {tuple(tile_numbers)} for band {band}.')
-        logging.info(f'Finished in {np.round((time.time()-start_time)/60, 3)} minutes.')
+        logging.info(
+            f'Successfully downloaded tile {tuple(tile_numbers)} for band {band} in {np.round(time.time()-start_time, 2)} seconds.'
+        )
         return True
 
     except subprocess.CalledProcessError as e:
@@ -854,7 +855,7 @@ def main(
                 start_download = time.time()
                 if download_tile_for_bands_parallel(availability, tile, in_dict, download_dir):
                     logging.info(
-                        f'Tile downloaded in all available bands. Took {np.round((time.time() - start_download) / 60, 3)} minutes.'
+                        f'Tile downloaded in all available bands. Took {np.round((time.time() - start_download), 2)} seconds.'
                     )
                 else:
                     logging.info(f'Tile {tile} failed to download.')
