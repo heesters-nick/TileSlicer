@@ -559,13 +559,12 @@ def process_tile(
 
     if w_unions_cats:
         obj_in_tile = read_unions_cat(unions_table_dir, tile)
-        dwarfs_in_tile = read_dwarf_cat(dwarf_cat, tile)
-        obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat, lens_cat)
+        obj_in_tile['tile'] = str(tile)
+        obj_in_tile['bands'] = str(avail_bands)
+        obj_in_tile = add_labels(obj_in_tile, dwarf_cat, z_class_cat, lens_cat)
         if obj_in_tile is None:
             logging.info(f'No objects cut out in tile {tile}.')
             return 0, 0, 0, 0
-        obj_in_tile['tile'] = str(tile)
-        obj_in_tile['bands'] = str(avail_bands)
 
         # count total number of cutouts created for this tile
         n_cutouts, n_already_cutout, n_batches_processed = 0, 0, 0

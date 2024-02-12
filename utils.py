@@ -400,15 +400,16 @@ def read_parquet(parquet_path, ra_range, dec_range, columns=None):
     return df
 
 
-def add_labels(det_df, dwarfs_df, z_class_cat, lens_cat):
+def add_labels(det_df, dwarf_cat, z_class_cat, lens_cat, tile_nums):
     """
     Add labels to detections dataframe.
 
     Args:
         det_df (dataframe): detections dataframe
-        dwarfs_df (dataframe): known dwarfs located in the tile
-        z_class_cat (dataframe): catalog dataframe with redshifts and classes
-        lens_cat (dataframe): catalog dataframe with known lenses
+        dwarf_cat (str): path to dwarf catalog
+        z_class_cat (str): path to redshift and class catalog
+        lens_cat (str): path to lens catalog
+        tile_nums (tuple): tile numbers
 
     Returns:
         det_df (dataframe): detections dataframe with labels
@@ -473,6 +474,7 @@ def add_labels(det_df, dwarfs_df, z_class_cat, lens_cat):
         f'Added {np.count_nonzero(~np.isnan(det_df["lens"]))} lens labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
     )
 
+    dwarfs_df = read_dwarf_cat(dwarf_cat, tile_nums)
     # match detections to dwarf catalog
     det_idx_lsb, _, lsb_unmatches, _ = match_cats(det_df, dwarfs_df, max_sep=10.0)
     # add lsb labels to detections dataframe

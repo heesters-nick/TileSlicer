@@ -6,7 +6,6 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from datetime import timedelta
 from multiprocessing import Pool
 
-import numba as nb
 import numpy as np
 import pandas as pd
 from astropy.io import fits
@@ -23,7 +22,6 @@ from utils import (
     add_labels,
     extract_tile_numbers,
     load_available_tiles,
-    read_dwarf_cat,
     read_h5,
     read_unions_cat,
     update_available_tiles,
@@ -231,25 +229,25 @@ def open_fits_files_sequentially(tile_dir, fits_filenames, fits_ext):
     return fits_data
 
 
-@nb.njit(nb.float32[:, :](nb.float32[:, :], nb.int32, nb.int32, nb.int32, nb.float32[:, :]))
+# @nb.njit(nb.float32[:, :](nb.float32[:, :], nb.int32, nb.int32, nb.int32, nb.float32[:, :]))
 def cutout2d(data_, x, y, size, cutout_in):
     y_large, x_large = data_.shape
-    y_large, x_large = nb.int32(y_large), nb.int32(x_large)
-    height, width = size, size
+    size_half = size // 2
+    # y_large, x_large = nb.int32(y_large), nb.int32(x_large)
 
-    y_start = max(0, y - height // 2)
-    y_end = min(y_large, y + (height + 1) // 2)
+    y_start = max(0, y - size_half)
+    y_end = min(y_large, y + (size - size_half))
 
-    x_start = max(0, x - width // 2)
-    x_end = min(x_large, x + (width + 1) // 2)
+    x_start = max(0, x - size_half)
+    x_end = min(x_large, x + (size - size_half))
 
     if y_start >= y_end or x_start >= x_end:
         raise ValueError('No overlap between the small and large array.')
 
     # cutout = np.zeros((size, size), dtype=data.dtype)
     cutout_in[
-        y_start - y + height // 2 : y_end - y + height // 2,
-        x_start - x + width // 2 : x_end - x + width // 2,
+        y_start - y + size_half : y_end - y + size_half,
+        x_start - x + size_half : x_end - x + size_half,
     ] = data_[y_start:y_end, x_start:x_end]
 
     return cutout_in
@@ -292,6 +290,7 @@ def cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band):
 def cutout_bands_parallel_cf(tile, in_dict, download_dir, obj_in_tile, size):
     n_bands = len(in_dict)
     final_cutouts = np.zeros((len(obj_in_tile), n_bands, size, size), dtype=np.float32)
+
     parallel_start = time.time()
     with ProcessPoolExecutor() as executor:
         # Dictionary mapping each future to the corresponding band
@@ -301,6 +300,51 @@ def cutout_bands_parallel_cf(tile, in_dict, download_dir, obj_in_tile, size):
             ): band
             for band in in_dict.keys()
         }
+        for future in as_completed(future_to_band):
+            band = future_to_band[future]
+            band_idx = list(in_dict.keys()).index(band)
+            try:
+                result = future.result()
+                if result is not None:
+                    final_cutouts[:, band_idx] = result
+            except Exception as e:
+                logging.exception(f'Failed to process band {band} for tile {tile}: {str(e)}')
+
+    parallel_end = time.time()
+    logging.info(
+        f'Finished cutting for all bands in {np.round(parallel_end-parallel_start, 2)} seconds.'
+    )
+    return final_cutouts
+
+
+def cutout_bands_parallel_cf_new(tile, in_dict, download_dir, obj_in_tile, size):
+    n_bands = len(in_dict)
+    final_cutouts = np.zeros((len(obj_in_tile), n_bands, size, size), dtype=np.float32)
+
+    tile_dir = os.path.join(download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
+
+    # Load FITS data once for all bands
+    fits_data = {}
+    for band in in_dict.keys():
+        tile_fitsfilename = f'{in_dict[band]["name"]}{in_dict[band]["delimiter"]}{str(tile[0]).zfill(in_dict[band]["zfill"])}{in_dict[band]["delimiter"]}{str(tile[1]).zfill(in_dict[band]["zfill"])}{in_dict[band]["suffix"]}'
+        with fits.open(
+            os.path.join(tile_dir, tile_fitsfilename), memmap=True, mode='readonly'
+        ) as hdul:
+            fits_data[band] = hdul[in_dict[band]['fits_ext']].data.astype(np.float32)
+
+    parallel_start = time.time()
+    with ProcessPoolExecutor() as executor:
+        future_to_band = {
+            executor.submit(
+                cutout_one_band_new2,
+                obj_in_tile,
+                size,
+                band,
+                fits_data,
+            ): band
+            for band in in_dict.keys()
+        }
+
         for future in as_completed(future_to_band):
             band = future_to_band[future]
             band_idx = list(in_dict.keys()).index(band)
@@ -385,6 +429,24 @@ def cutout_bands_sequential_new(tile, in_dict, download_dir, obj_in_tile, size):
 def cutout_one_band_new(data, obj_in_tile, size, band):
     cutouts_for_band = np.zeros((len(obj_in_tile), size, size), dtype=np.float32)
     cutout_empty = np.zeros((size, size), dtype=np.float32)
+    xs, ys = (
+        np.floor(obj_in_tile.x.values + 0.5).astype(np.int32),
+        np.floor(obj_in_tile.y.values + 0.5).astype(np.int32),
+    )
+    cutout_start = time.time()
+    for i, (x, y) in enumerate(zip(xs, ys)):
+        cutouts_for_band[i] = cutout2d(data, x, y, size, cutout_empty)
+
+    logging.info(
+        f'Finished cutting {len(xs)} objects for {band} in {np.round(time.time()-cutout_start, 2)} seconds.'
+    )
+    return cutouts_for_band
+
+
+def cutout_one_band_new2(obj_in_tile, size, band, fits_data):
+    cutouts_for_band = np.zeros((len(obj_in_tile), size, size), dtype=np.float32)
+    cutout_empty = np.zeros((size, size), dtype=np.float32)
+    data = fits_data[band]
     xs, ys = (
         np.floor(obj_in_tile.x.values + 0.5).astype(np.int32),
         np.floor(obj_in_tile.y.values + 0.5).astype(np.int32),
@@ -505,12 +567,12 @@ def main(
             # add available bands to object dataframe
             obj_in_tile['bands'] = str(avail_bands)
             # load the dwarf galaxies in the tile
-            dwarfs_in_tile = read_dwarf_cat(dwarf_cat, tile)
+
             # add labels to the objects in the tile
-            obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat, lens_cat)
+            obj_in_tile = add_labels(obj_in_tile, dwarf_cat, z_class_cat, lens_cat, tile)
 
             # only cutout part of the objects for testing
-            obj_in_tile = obj_in_tile[:20000].reset_index(drop=True)
+            obj_in_tile = obj_in_tile[:10000].reset_index(drop=True)
 
             cutting_start = time.time()
             cutout = cutout_bands_sequential_new(tile, in_dict, download_dir, obj_in_tile, size)
