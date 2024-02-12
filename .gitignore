@@ -16,3 +16,4 @@ tables/cutout_cat_master.parquet
 logs/
 tables/cutout_catalog_master.parquet
 .conda/
+cadcproxy.pem
