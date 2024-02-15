@@ -2,9 +2,8 @@ import logging
 import os
 import shutil
 import time
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
-from multiprocessing import Pool
 
 import numpy as np
 import pandas as pd
@@ -174,66 +173,15 @@ logging.basicConfig(
 
 ### tile parameters ###
 band_constraint = 5  # define the minimum number of bands that should be available for a tile
-tile_batch_size = 7  # number of tiles to process in parallel
-object_batch_size = 5000  # number of objects to process at a time
-cutout_size = np.float32(224)
-cutout_size = 224
-num_workers = 14  # specifiy the number of parallel workers following machine capabilities
-
-
-def open_fits_files_concurrently(tile_dir, fits_filenames, fits_ext):
-    fits_data = {}
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_filename = {
-            executor.submit(
-                fits.open, os.path.join(tile_dir, fits_filename), memmap=True
-            ): fits_filename
-            for fits_filename in fits_filenames
-        }
-        for future in as_completed(future_to_filename):
-            fits_filename = future_to_filename[future]
-            band_ext = fits_ext[fits_filenames.index(fits_filename)]
-            try:
-                hdul = future.result()
-                if (
-                    hdul is not None and len(hdul) > 0
-                ):  # Check if hdul is not None and contains at least one HDU
-                    fits_data[fits_filename] = hdul[band_ext].data.astype(np.float32)
-                else:
-                    logging.warning(
-                        f'Empty or invalid HDU for FITS file {fits_filename}. Skipping.'
-                    )
-            except FileNotFoundError:
-                logging.error(f'File {fits_filename} not found.')
-    return fits_data
-
-
-def open_fits_files_sequentially(tile_dir, fits_filenames, fits_ext):
-    fits_data = {}
-    for fits_filename in fits_filenames:
-        try:
-            with fits.open(
-                os.path.join(tile_dir, fits_filename), memmap=True, mode='readonly'
-            ) as hdul:
-                if (
-                    hdul is not None and len(hdul) > 0
-                ):  # Check if hdul is not None and contains at least one HDU
-                    band_ext = fits_ext[fits_filenames.index(fits_filename)]
-                    fits_data[fits_filename] = hdul[band_ext].data.astype(np.float32)
-                else:
-                    logging.warning(
-                        f'Empty or invalid HDU for FITS file {fits_filename}. Skipping.'
-                    )
-        except FileNotFoundError:
-            logging.error(f'File {fits_filename} not found.')
-    return fits_data
+cutout_size = 224  # square cutout size in pixels
+num_workers = 5  # specifiy the number of threads for cutout creation
+number_objects = 30000
 
 
 # @nb.njit(nb.float32[:, :](nb.float32[:, :], nb.int32, nb.int32, nb.int32, nb.float32[:, :]))
 def cutout2d(data_, x, y, size, cutout_in):
     y_large, x_large = data_.shape
     size_half = size // 2
-    # y_large, x_large = nb.int32(y_large), nb.int32(x_large)
 
     y_start = max(0, y - size_half)
     y_end = min(y_large, y + (size - size_half))
@@ -244,7 +192,6 @@ def cutout2d(data_, x, y, size, cutout_in):
     if y_start >= y_end or x_start >= x_end:
         raise ValueError('No overlap between the small and large array.')
 
-    # cutout = np.zeros((size, size), dtype=data.dtype)
     cutout_in[
         y_start - y + size_half : y_end - y + size_half,
         x_start - x + size_half : x_end - x + size_half,
@@ -265,7 +212,9 @@ def cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band):
     size = np.int32(size)
     try:
         fits_start = time.time()
-        with fits.open(os.path.join(tile_dir, tile_fitsfilename), memmap=True) as hdul:
+        with fits.open(
+            os.path.join(tile_dir, tile_fitsfilename), memmap=True, mode='readonly'
+        ) as hdul:
             data = hdul[fits_ext].data.astype(np.float32)  # type: ignore
             logging.info(f'Opened {tile_fitsfilename}. Took {np.round(time.time()-fits_start, 2)}')
             cutout_empty = np.zeros((size, size), dtype=np.float32)
@@ -275,7 +224,6 @@ def cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band):
             )
             cutout_start = time.time()
             for i, (x, y) in enumerate(zip(xs, ys)):
-                # cutouts_for_band[i] = make_cutout(data, x, y, size)
                 cutouts_for_band[i] = cutout2d(data, x, y, size, cutout_empty)
             logging.info(
                 f'Finished cutting {len(xs)} objects for {band} in {np.round(time.time()-cutout_start, 2)} seconds.'
@@ -287,12 +235,11 @@ def cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band):
     return cutouts_for_band
 
 
-def cutout_bands_parallel_cf(tile, in_dict, download_dir, obj_in_tile, size):
+def cutout_all_bands(tile, in_dict, download_dir, obj_in_tile, size, workers):
     n_bands = len(in_dict)
     final_cutouts = np.zeros((len(obj_in_tile), n_bands, size, size), dtype=np.float32)
 
-    parallel_start = time.time()
-    with ProcessPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         # Dictionary mapping each future to the corresponding band
         future_to_band = {
             executor.submit(
@@ -310,40 +257,36 @@ def cutout_bands_parallel_cf(tile, in_dict, download_dir, obj_in_tile, size):
             except Exception as e:
                 logging.exception(f'Failed to process band {band} for tile {tile}: {str(e)}')
 
-    parallel_end = time.time()
-    logging.info(
-        f'Finished cutting for all bands in {np.round(parallel_end-parallel_start, 2)} seconds.'
-    )
     return final_cutouts
 
 
-def cutout_bands_parallel_cf_new(tile, in_dict, download_dir, obj_in_tile, size):
+def cutout_all_bands_mod(
+    tile,
+    in_dict,
+    download_dir,
+    obj_in_tile,
+    size,
+    workers,
+):
     n_bands = len(in_dict)
+    slow_files = ['whigs-g', 'wishes-z']
     final_cutouts = np.zeros((len(obj_in_tile), n_bands, size, size), dtype=np.float32)
 
-    tile_dir = os.path.join(download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
-
-    # Load FITS data once for all bands
-    fits_data = {}
-    for band in in_dict.keys():
-        tile_fitsfilename = f'{in_dict[band]["name"]}{in_dict[band]["delimiter"]}{str(tile[0]).zfill(in_dict[band]["zfill"])}{in_dict[band]["delimiter"]}{str(tile[1]).zfill(in_dict[band]["zfill"])}{in_dict[band]["suffix"]}'
-        with fits.open(
-            os.path.join(tile_dir, tile_fitsfilename), memmap=True, mode='readonly'
-        ) as hdul:
-            fits_data[band] = hdul[in_dict[band]['fits_ext']].data.astype(np.float32)
-
-    parallel_start = time.time()
-    with ProcessPoolExecutor() as executor:
-        future_to_band = {
-            executor.submit(
-                cutout_one_band_new2,
-                obj_in_tile,
-                size,
-                band,
-                fits_data,
-            ): band
-            for band in in_dict.keys()
-        }
+    with ThreadPoolExecutor(max_workers=4) as executor_fast, ThreadPoolExecutor(
+        max_workers=2
+    ) as executor_slow:
+        # Dictionary mapping each future to the corresponding band
+        future_to_band = {}
+        for band in list(in_dict):
+            if band in slow_files:
+                executor = executor_slow
+            else:
+                executor = executor_fast
+            future_to_band[
+                executor.submit(
+                    cutout_one_band, tile, obj_in_tile, download_dir, in_dict, size, band
+                )
+            ] = band
 
         for future in as_completed(future_to_band):
             band = future_to_band[future]
@@ -354,147 +297,6 @@ def cutout_bands_parallel_cf_new(tile, in_dict, download_dir, obj_in_tile, size)
                     final_cutouts[:, band_idx] = result
             except Exception as e:
                 logging.exception(f'Failed to process band {band} for tile {tile}: {str(e)}')
-
-    parallel_end = time.time()
-    logging.info(
-        f'Finished cutting for all bands in {np.round(parallel_end-parallel_start, 2)} seconds.'
-    )
-    return final_cutouts
-
-
-def cutout_bands_parallel_mp(tile, in_dict, download_dir, obj_in_tile, size):
-    n_bands = len(in_dict)
-    final_cutouts = np.zeros((len(obj_in_tile), n_bands, size, size), dtype=np.float32)
-    parallel_start = time.time()
-    # Create a Pool with the number of available CPUs
-    with Pool() as pool:
-        # Map the process_band function to each band
-        results = pool.starmap(
-            cutout_one_band,
-            [(tile, obj_in_tile, download_dir, in_dict, size, band) for band in in_dict.keys()],
-        )
-
-        # Fill final_cutouts with the results
-        for band_idx, result in enumerate(results):
-            if result is not None:
-                final_cutouts[:, band_idx] = result
-
-    parallel_end = time.time()
-    logging.info(
-        f'Finished cutting for all bands in {np.round(parallel_end-parallel_start, 2)} seconds.'
-    )
-
-    return final_cutouts
-
-
-def cutout_bands_sequential(tile, in_dict, download_dir, obj_in_tile, size):
-    n_bands = len(in_dict)
-    final_cutouts = np.zeros((len(obj_in_tile), n_bands, size, size), dtype=np.float32)
-
-    # Iterate over each band sequentially
-    for band_idx, band in enumerate(in_dict.keys()):
-        try:
-            result = cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band)
-            if result is not None:
-                final_cutouts[:, band_idx] = result
-        except Exception as e:
-            logging.exception(f'Failed to process band {band} for tile {tile}: {str(e)}')
-
-    return final_cutouts
-
-
-def cutout_bands_sequential_new(tile, in_dict, download_dir, obj_in_tile, size):
-    n_bands = len(in_dict)
-    final_cutouts = np.zeros((len(obj_in_tile), n_bands, size, size), dtype=np.float32)
-
-    # Open FITS files concurrently
-    tile_dir = os.path.join(download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
-    fits_filenames = [
-        f'{in_dict[band]["name"]}{in_dict[band]["delimiter"]}{str(tile[0]).zfill(in_dict[band]["zfill"])}{in_dict[band]["delimiter"]}{str(tile[1]).zfill(in_dict[band]["zfill"])}{in_dict[band]["suffix"]}'
-        for band in in_dict.keys()
-    ]
-    fits_extensions = [in_dict[band]['fits_ext'] for band in in_dict.keys()]
-    open_start = time.time()
-    # fits_data = open_fits_files_concurrently(tile_dir, fits_filenames, fits_extensions)
-    fits_data = open_fits_files_sequentially(tile_dir, fits_filenames, fits_extensions)
-    logging.info(
-        f'Finished opening all fits files in {np.round(time.time()-open_start, 2)} seconds.'
-    )
-    for band_idx, (band, data) in enumerate(fits_data.items()):
-        final_cutouts[:, band_idx] = cutout_one_band_new(data, obj_in_tile, size, band)
-
-    return final_cutouts
-
-
-def cutout_one_band_new(data, obj_in_tile, size, band):
-    cutouts_for_band = np.zeros((len(obj_in_tile), size, size), dtype=np.float32)
-    cutout_empty = np.zeros((size, size), dtype=np.float32)
-    xs, ys = (
-        np.floor(obj_in_tile.x.values + 0.5).astype(np.int32),
-        np.floor(obj_in_tile.y.values + 0.5).astype(np.int32),
-    )
-    cutout_start = time.time()
-    for i, (x, y) in enumerate(zip(xs, ys)):
-        cutouts_for_band[i] = cutout2d(data, x, y, size, cutout_empty)
-
-    logging.info(
-        f'Finished cutting {len(xs)} objects for {band} in {np.round(time.time()-cutout_start, 2)} seconds.'
-    )
-    return cutouts_for_band
-
-
-def cutout_one_band_new2(obj_in_tile, size, band, fits_data):
-    cutouts_for_band = np.zeros((len(obj_in_tile), size, size), dtype=np.float32)
-    cutout_empty = np.zeros((size, size), dtype=np.float32)
-    data = fits_data[band]
-    xs, ys = (
-        np.floor(obj_in_tile.x.values + 0.5).astype(np.int32),
-        np.floor(obj_in_tile.y.values + 0.5).astype(np.int32),
-    )
-    cutout_start = time.time()
-    for i, (x, y) in enumerate(zip(xs, ys)):
-        cutouts_for_band[i] = cutout2d(data, x, y, size, cutout_empty)
-
-    logging.info(
-        f'Finished cutting {len(xs)} objects for {band} in {np.round(time.time()-cutout_start, 2)} seconds.'
-    )
-    return cutouts_for_band
-
-
-# Define cutout_bands_parallel function with concurrent file opening
-def cutout_bands_parallel_new(tile, in_dict, download_dir, obj_in_tile, size):
-    n_bands = len(in_dict)
-    final_cutouts = np.zeros((len(obj_in_tile), n_bands, size, size), dtype=np.float32)
-
-    # Open FITS files concurrently
-    tile_dir = os.path.join(download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
-    fits_filenames = [
-        f'{in_dict[band]["name"]}{in_dict[band]["delimiter"]}{str(tile[0]).zfill(in_dict[band]["zfill"])}{in_dict[band]["delimiter"]}{str(tile[1]).zfill(in_dict[band]["zfill"])}{in_dict[band]["suffix"]}'
-        for band in in_dict.keys()
-    ]
-    fits_extensions = [in_dict[band]['fits_ext'] for band in in_dict.keys()]
-    open_start = time.time()
-    # fits_data = open_fits_files_concurrently(tile_dir, fits_filenames, fits_extensions)
-    fits_data = open_fits_files_sequentially(tile_dir, fits_filenames, fits_extensions)
-    logging.info(
-        f'Finished opening all fits files in {np.round(time.time()-open_start, 2)} seconds.'
-    )
-
-    # Perform parallel cutout creation
-    with ProcessPoolExecutor(max_workers=8) as executor:
-        # Dictionary mapping each future to the corresponding band
-        future_to_band = {
-            executor.submit(cutout_one_band_new, data, obj_in_tile, size, band): i
-            for i, (band, data) in enumerate(fits_data.items())
-        }
-        for future in as_completed(future_to_band):
-            band_idx = future_to_band[future]
-            try:
-                result = future.result()
-                if result is not None:
-                    final_cutouts[:, band_idx] = result
-            except Exception as e:
-                logging.exception(f'Failed to process band {band_idx}: {str(e)}')
 
     return final_cutouts
 
@@ -517,6 +319,7 @@ def main(
     unions_det_dir,
     size,
     workers,
+    num_objects,
     update,
     show_stats,
     dl_tiles,
@@ -543,85 +346,80 @@ def main(
         availability.stats(band=comb_w_band)
     # get the tiles to cut out from the unions catalogs
     _, tiles_x_bands = tiles_from_unions_catalogs(availability, unions_det_dir, band_constr)
-    if dl_tiles:
-        logging.info('Downloading the tiles in the available bands..')
-        for tile in tiles_x_bands:
-            start_download = time.time()
-            if download_tile_for_bands_parallel(availability, tile, in_dict, download_dir):
-                logging.info(
-                    f'Tile downloaded in all available bands. Took {np.round(time.time() - start_download, 2)} seconds.'
+
+    logging.info('Downloading the tiles in the available bands..')
+    for tile in tiles_x_bands:
+        start_download = time.time()
+        if download_tile_for_bands_parallel(availability, tile, in_dict, download_dir):
+            logging.info(
+                f'Tile downloaded in all available bands. Took {np.round(time.time() - start_download, 2)} seconds.'
+            )
+        else:
+            logging.info(f'Tile {tile} failed to download.')
+
+        avail_bands = ''.join(availability.get_availability(tile)[0])
+        save_path = os.path.join(
+            cutout_dir,
+            f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
+        )
+
+        # get objects to cut out
+        obj_in_tile = read_unions_cat(unions_det_dir, tile)
+        # add tile numbers to object dataframe
+        obj_in_tile['tile'] = str(tile)
+        # add available bands to object dataframe
+        obj_in_tile['bands'] = str(avail_bands)
+
+        # add labels to the objects in the tile
+        obj_in_tile = add_labels(obj_in_tile, dwarf_cat, z_class_cat, lens_cat, tile)
+
+        # only cutout part of the objects for testing
+        obj_in_tile = obj_in_tile[:num_objects].reset_index(drop=True)
+
+        cutting_start = time.time()
+        cutout = cutout_all_bands(tile, in_dict, download_dir, obj_in_tile, size, workers)
+        logging.info(f'Cutting finished. Took {np.round(time.time()-cutting_start, 2)} seconds.')
+        logging.info(f'Start to cutouts done took {np.round(time.time()-scrip_start, 2)}')
+
+        # save_to_h5(
+        #     cutout,
+        #     tile,
+        #     obj_in_tile['ID'].values,
+        #     obj_in_tile['ra'].values,
+        #     obj_in_tile['dec'].values,
+        #     obj_in_tile['mag_r'].values,
+        #     obj_in_tile['class'].values,
+        #     obj_in_tile['zspec'].values,
+        #     obj_in_tile['lsb'].values,
+        #     obj_in_tile['lens'].values,
+        #     save_path,
+        # )
+
+        cutout = None
+
+        tile_folder = os.path.join(download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
+        if os.path.exists(tile_folder):
+            logging.info(f'Cutting done, deleting raw data from tile {tile}.')
+            shutil.rmtree(tile_folder)
+
+        # plot all cutouts or just a random one
+        if with_plot:
+            if plot_random_cutout:
+                logging.info(f'Plotting cutout of random object in tile: {tile}.')
+                cutout_from_file = read_h5(save_path)
+                random_obj_index = np.random.randint(0, cutout_from_file['images'].shape[0])
+                # plot a random object from the stack of cutouts
+                plot_cutout(
+                    cutout_from_file,
+                    in_dict,
+                    figure_dir,
+                    random_obj_index,
+                    show_plot=show_plt,
+                    save_plot=save_plt,
                 )
             else:
-                logging.info(f'Tile {tile} failed to download.')
-
-            avail_bands = ''.join(availability.get_availability(tile)[0])
-            save_path = os.path.join(
-                cutout_dir,
-                f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
-            )
-
-            # get objects to cut out
-            obj_in_tile = read_unions_cat(unions_det_dir, tile)
-            # add tile numbers to object dataframe
-            obj_in_tile['tile'] = str(tile)
-            # add available bands to object dataframe
-            obj_in_tile['bands'] = str(avail_bands)
-            # load the dwarf galaxies in the tile
-
-            # add labels to the objects in the tile
-            obj_in_tile = add_labels(obj_in_tile, dwarf_cat, z_class_cat, lens_cat, tile)
-
-            # only cutout part of the objects for testing
-            obj_in_tile = obj_in_tile[:10000].reset_index(drop=True)
-
-            cutting_start = time.time()
-            cutout = cutout_bands_sequential_new(tile, in_dict, download_dir, obj_in_tile, size)
-            logging.info(
-                f'Cutting finished. Took {np.round(time.time()-cutting_start, 2)} seconds.'
-            )
-            logging.info(f'Start to cutouts done took {np.round(time.time()-scrip_start, 2)}')
-
-            # save_to_h5(
-            #     cutout,
-            #     tile,
-            #     obj_in_tile['ID'].values,
-            #     obj_in_tile['ra'].values,
-            #     obj_in_tile['dec'].values,
-            #     obj_in_tile['mag_r'].values,
-            #     obj_in_tile['class'].values,
-            #     obj_in_tile['zspec'].values,
-            #     obj_in_tile['lsb'].values,
-            #     obj_in_tile['lens'].values,
-            #     save_path,
-            # )
-
-            cutout = None
-
-            tile_folder = os.path.join(
-                download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
-            )
-            if os.path.exists(tile_folder):
-                logging.info(f'Cutting done, deleting raw data from tile {tile}.')
-                shutil.rmtree(tile_folder)
-
-            # plot all cutouts or just a random one
-            if with_plot:
-                if plot_random_cutout:
-                    logging.info(f'Plotting cutout of random object in tile: {tile}.')
-                    cutout_from_file = read_h5(save_path)
-                    random_obj_index = np.random.randint(0, cutout_from_file['images'].shape[0])
-                    # plot a random object from the stack of cutouts
-                    plot_cutout(
-                        cutout_from_file,
-                        in_dict,
-                        figure_dir,
-                        random_obj_index,
-                        show_plot=show_plt,
-                        save_plot=save_plt,
-                    )
-                else:
-                    plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
-            break
+                plot_cutout(cutout, in_dict, figure_dir, show_plot=show_plt, save_plot=save_plt)
+        break
 
 
 if __name__ == '__main__':
@@ -644,6 +442,7 @@ if __name__ == '__main__':
         'unions_det_dir': unions_detection_directory,
         'size': cutout_size,
         'workers': num_workers,
+        'num_objects': number_objects,
         'update': update_tiles,
         'show_stats': show_tile_statistics,
         'dl_tiles': download_tiles,
