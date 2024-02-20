@@ -14,3 +14,4 @@ scikit-image
 vos  # run pip install -U vos
 pyarrow
 numba
+torch
