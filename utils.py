@@ -20,6 +20,25 @@ from vos import Client
 client = Client()
 
 
+def setup_logging(log_dir, script_name, logging_level):
+    """
+    Set up a custom logger for a given script
+
+    Args:
+        log_dir (str): directory where logs should be saved
+        script_name (str): script name
+    """
+    log_filename = os.path.join(
+        log_dir, f'{os.path.splitext(os.path.basename(script_name))[0]}.log'
+    )
+
+    logging.basicConfig(
+        level=logging_level,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[logging.FileHandler(log_filename, mode='w'), logging.StreamHandler()],
+    )
+
+
 def relate_coord_tile(coords=None, nums=None):
     """
     Conversion between tile numbers and coordinates.
@@ -276,7 +295,7 @@ def get_numbers_from_folders(unions_table_dir):
                     tile_list.append(numbers_tuple)
             except ValueError:
                 # Handle the case where the folder name doesn't match the expected format
-                logging.error(
+                logging.warning(
                     f"Skipping folder {folder_name} as it doesn't match the expected format."
                 )
 
@@ -294,7 +313,7 @@ def read_unions_cat(unions_table_dir, tile_nums):
     Returns:
         cat (dataframe): pandas dataframe containing the UNIONS catalog for the specified tile
     """
-    logging.info(f'Reading UNIONS catalog for tile {tile_nums}')
+    logging.debug(f'Reading UNIONS catalog for tile {tile_nums}')
     try:
         df = Table.read(
             os.path.join(
@@ -318,7 +337,7 @@ def read_unions_cat(unions_table_dir, tile_nums):
         # replace -99 and +99 values with NaN
         df['mag_r'].replace([-99.0, 99.0], np.nan, inplace=True)
 
-        logging.info(f'Read {len(df)} objects from UNIONS catalog for tile {tile_nums}')
+        logging.debug(f'Read {len(df)} objects from UNIONS catalog for tile {tile_nums}')
     except PermissionError:
         logging.error(f'Permission error reading UNIONS catalog for tile {tile_nums}')
         df = None
@@ -336,7 +355,7 @@ def read_dwarf_cat(dwarf_cat, tile_nums):
     Returns:
         cat (dataframe): pandas dataframe containing the dwarf catalog for the specified tile
     """
-    logging.info(f'Reading dwarf catalog for tile {tile_nums}')
+    logging.debug(f'Reading dwarf catalog for tile {tile_nums}')
     try:
         df = pd.read_csv(dwarf_cat)
         df = df[df['tile'] == str(tuple(tile_nums))].reset_index(drop=True)
@@ -386,7 +405,7 @@ def read_parquet(parquet_path, ra_range, dec_range, columns=None):
     Returns:
         df (dataframe): pandas dataframe containing the selected data
     """
-    logging.info('Reading redshift catalog.')
+    logging.debug('Reading redshift catalog.')
     filter_coords = [
         ('ra', '>=', ra_range[0]),
         ('ra', '<=', ra_range[1]),
@@ -396,7 +415,7 @@ def read_parquet(parquet_path, ra_range, dec_range, columns=None):
     df = pq.read_table(parquet_path, memory_map=True, filters=filter_coords).to_pandas()
     if columns:
         df = df[columns]
-    logging.info(f'Read {len(df)} objects from catalog {os.path.basename(parquet_path)}.')
+    logging.debug(f'Read {len(df)} objects from catalog {os.path.basename(parquet_path)}.')
     return df
 
 
@@ -416,7 +435,7 @@ def add_labels(det_df, dwarf_cat, z_class_cat, lens_cat, tile_nums):
     """
     det_df = det_df.copy()
 
-    logging.info('Adding labels to the detections dataframe.')
+    logging.debug(f'Adding labels to the detections dataframe for tile {tile_nums}.')
     # define minimum and maximum ra and dec values to filter the label catalog
     margin = 0.0014  # extend the ra and dec ranges by this amount in degrees
     ra_range = (np.min(det_df['ra']) - margin, np.max(det_df['ra']) + margin)
@@ -438,18 +457,18 @@ def add_labels(det_df, dwarf_cat, z_class_cat, lens_cat, tile_nums):
     det_df.loc[det_idx_z_class, 'class'] = label_matches_z_class['cspec'].values
     det_df.loc[det_idx_z_class, 'zspec'] = label_matches_z_class['zspec'].values
 
-    logging.info(
+    logging.debug(
         f'Number of detection matches for z/class: {len(det_idx_z_class)}, number of label matches for z/class: {len(label_matches_z_class)} for tile {det_df["tile"].iloc[0]}'
     )
 
-    logging.info(
+    logging.debug(
         f'Found {np.count_nonzero(~np.isnan(label_matches_z_class["zspec"]))} matching objects in the redshift/class catalog for tile {det_df["tile"].iloc[0]}.'
     )
 
-    logging.info(
+    logging.debug(
         f'Added {np.count_nonzero(~np.isnan(det_df["zspec"]))} redshift labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
     )
-    logging.info(
+    logging.debug(
         f'Added {np.count_nonzero(~np.isnan(det_df["class"]))} class labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
     )
 
@@ -462,15 +481,15 @@ def add_labels(det_df, dwarf_cat, z_class_cat, lens_cat, tile_nums):
     det_df.loc[:, 'lens'] = np.nan
     det_df.loc[det_idx_lens, 'lens'] = 1
 
-    logging.info(
+    logging.debug(
         f'Number of detection matches for lenses: {len(det_idx_lens)}, number of label matches for lenses: {len(label_matches_lens)} for tile {det_df["tile"].iloc[0]}.'
     )
 
-    logging.info(
+    logging.debug(
         f'Found {len(label_matches_lens)} matching objects in the lens catalog for tile {det_df["tile"].iloc[0]}.'
     )
 
-    logging.info(
+    logging.debug(
         f'Added {np.count_nonzero(~np.isnan(det_df["lens"]))} lens labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
     )
 
@@ -482,12 +501,12 @@ def add_labels(det_df, dwarf_cat, z_class_cat, lens_cat, tile_nums):
     det_df.loc[det_idx_lsb, 'lsb'] = 1
     det_df.loc[det_idx_lsb, 'class'] = 2  # dwarfs are galaxies
 
-    logging.info(
+    logging.debug(
         f'Added {np.count_nonzero(~np.isnan(det_df["lsb"]))} LSB labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
     )
 
     if len(lsb_unmatches) > 0:
-        logging.info(
+        logging.debug(
             f'Found {len(lsb_unmatches)} undetected but known dwarfs in tile {dwarfs_df.tile[0]}.'
         )
         lsb_unmatches.loc[:, 'lsb'] = 1  # dwarfs are LSB
@@ -495,7 +514,7 @@ def add_labels(det_df, dwarf_cat, z_class_cat, lens_cat, tile_nums):
         # augment detections dataframe with undetected but known dwarfs
         common_columns = det_df.columns.intersection(lsb_unmatches.columns)
         det_df = pd.concat([det_df, lsb_unmatches[common_columns]], ignore_index=True)
-    logging.info('Finished adding labels to the detections dataframe.')
+    logging.debug('Finished adding labels to the detections dataframe.')
     return det_df
 
 
@@ -508,7 +527,7 @@ def save_tile_cat(table_dir, tile_nums, obj_in_tile):
         tile_nums (tuple): tile numbers
         obj_in_tile (dataframe): objects that were cut out in the current tile
     """
-    logging.info(f'Saving tile catalog for tile {tile_nums} to a temporary file.')
+    logging.debug(f'Saving tile catalog for tile {tile_nums} to a temporary file.')
     temp_path = os.path.join(table_dir, f'cat_temp_{tile_nums[0]}_{tile_nums[1]}.parquet')
     columns = ['ra', 'dec', 'cfis_id', 'class', 'lens', 'lsb', 'mag_r', 'tile', 'zspec', 'bands']
     obj_in_tile[columns].to_parquet(temp_path, index=False)
@@ -546,12 +565,12 @@ def update_master_cat(cat_master, table_dir, batch_tile_list):
         duplicate_rows = master_table_updated[master_table_updated.duplicated()]
 
         if not duplicate_rows.empty:
-            logging.info('Duplicate rows found. Dropping them.')
+            logging.debug('Duplicate rows found. Dropping them.')
 
             # Remove duplicate rows
             master_table_updated = master_table_updated.drop_duplicates()
         else:
-            logging.info('No duplicate rows found. Moving on.')
+            logging.debug('No duplicate rows found. Moving on.')
 
         master_table_updated.to_parquet(cat_master, index=False)
     # create a new master catalog if it does not exist yet
@@ -700,7 +719,7 @@ def update_h5_labels_parallel(tile_nums, h5_path_list, unions_det_dir, z_class_c
         obj_df['zspec'] = obj_df['zspec'].astype('float32')
         obj_df['class'] = obj_df['class'].astype('float32')
     else:
-        logging.info(f'No UNIONS catalog for tile {tile_nums} found.')
+        logging.error(f'No UNIONS catalog for tile {tile_nums} found.')
 
     with ThreadPoolExecutor() as executor:
         executor.map(
@@ -742,7 +761,7 @@ def update_single_h5(h5_path, obj_dataframe):
                     logging.warning(
                         f"Dataset '{dataset_name}' does not exist in the HDF5 file {file_name}."
                     )
-                    logging.info(f'Creating dataset {dataset_name} in the HDF5 file {file_name}.')
+                    logging.debug(f'Creating dataset {dataset_name} in the HDF5 file {file_name}.')
                     h5_df[dataset_name] = np.nan * np.ones(len(df))
 
             z_matching = np.count_nonzero(
@@ -756,19 +775,19 @@ def update_single_h5(h5_path, obj_dataframe):
                 merged_df['lens'].fillna('nan') == h5_df['lens'].fillna('nan')
             )
 
-            logging.info(
+            logging.debug(
                 f'Found {np.count_nonzero(~merged_df["zspec"].isna())} objects with available redshift labels for {file_name}.'
             )
-            logging.info(
+            logging.debug(
                 f'Found {np.count_nonzero(~merged_df["class"].isna())} objects with available class labels for {file_name}.'
             )
-            logging.info(
+            logging.debug(
                 f'Found {np.count_nonzero(~merged_df["lens"].isna())} objects that are known lenses for {file_name}.'
             )
 
-            logging.info(f'File {file_name}: changed redshifts: {len(df)-z_matching}/{len(df)}')
-            logging.info(f'File {file_name}: changed classes: {len(df)-class_matching}/{len(df)}')
-            logging.info(
+            logging.debug(f'File {file_name}: changed redshifts: {len(df)-z_matching}/{len(df)}')
+            logging.debug(f'File {file_name}: changed classes: {len(df)-class_matching}/{len(df)}')
+            logging.debug(
                 f'File {file_name}: changed lens labels: {len(df)-lens_matching}/ {len(df)}'
             )
 
@@ -895,12 +914,12 @@ def create_master_cat_from_file(cat_master, table_dir, h5_path_list, tile_nums):
             duplicate_rows = master_table_updated[master_table_updated.duplicated()]
 
             if not duplicate_rows.empty:
-                logging.info(f'Duplicate rows found in tile {tile_nums}. Dropping them.')
+                logging.debug(f'Duplicate rows found in tile {tile_nums}. Dropping them.')
 
                 # Remove duplicate rows
                 master_table_updated = master_table_updated.drop_duplicates()
             else:
-                logging.info(f'No duplicate rows found in tile {tile_nums}. Moving on.')
+                logging.debug(f'No duplicate rows found in tile {tile_nums}. Moving on.')
 
             master_table_updated.to_parquet(cat_master, index=False)
         # create a new master catalog if it does not exist yet

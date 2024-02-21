@@ -169,19 +169,7 @@ os.makedirs(figure_directory, exist_ok=True)
 log_dir = os.path.join(main_directory, 'logs/')
 os.makedirs(log_dir, exist_ok=True)
 
-# define the logger
-log_file_name = 'tilecutter.log'
-log_file_path = os.path.join(log_dir, log_file_name)
-
-# Configure the logging module
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file_path, mode='w'),
-        logging.StreamHandler(),  # Add this line to also log to the console
-    ],
-)
+# setup_logging(log_dir, __name__)
 
 ### tile parameters ###
 band_constraint = 3  # define the minimum number of bands that should be available for a tile
@@ -318,7 +306,7 @@ def download_tile_one_band(tile_numbers, tile_fitsname, final_path, temp_path, v
         return True
 
     try:
-        logging.info(f'Downloading {tile_fitsname} for band {band}...')
+        logging.debug(f'Downloading {tile_fitsname} for band {band}...')
         start_time = time.time()
         result = subprocess.run(
             f'vcp -v {vos_path} {temp_path}', shell=True, stderr=subprocess.PIPE, text=True
@@ -327,7 +315,7 @@ def download_tile_one_band(tile_numbers, tile_fitsname, final_path, temp_path, v
         result.check_returncode()
 
         os.rename(temp_path, final_path)
-        logging.info(
+        logging.debug(
             f'Successfully downloaded tile {tuple(tile_numbers)} for band {band} in {np.round(time.time()-start_time, 2)} seconds.'
         )
         return True
@@ -347,9 +335,9 @@ def download_tile_one_band(tile_numbers, tile_fitsname, final_path, temp_path, v
         return False
 
 
-def download_tile_for_bands_parallel(availability, tile_nums, in_dict, download_dir):
+def download_tile_for_bands_parallel(availability, tile_nums, in_dict, download_dir, workers=5):
     avail_idx = availability.get_availability(tile_nums)[1]
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         # Create a list of futures for concurrent downloads
         futures = []
         for band in np.array(list(band_dict.keys()))[avail_idx]:

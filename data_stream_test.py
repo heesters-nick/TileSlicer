@@ -8,6 +8,7 @@ import pandas as pd
 from vos import Client
 
 from data_stream import DataStream
+from utils import setup_logging
 
 client = Client()
 
@@ -61,7 +62,7 @@ band_dict = {
 
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = False
+update_tiles = True
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -132,38 +133,38 @@ os.makedirs(cutout_directory, exist_ok=True)
 figure_directory = os.path.join(main_directory, 'figures/')
 os.makedirs(figure_directory, exist_ok=True)
 # define where the logs should be saved
-log_dir = os.path.join(main_directory, 'logs/')
-os.makedirs(log_dir, exist_ok=True)
-
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-
-file_handler = logging.FileHandler('data_stream_test.log', mode='w')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-
+log_directory = os.path.join(main_directory, 'logs/')
+os.makedirs(log_directory, exist_ok=True)
 
 band_constraint = 5  # define the minimum number of bands that should be available for a tile
 cutout_size = 224
 number_objects = 30000
-num_workers = 5
-queue_size = 3
+num_cutout_workers = 5  # number of threads for cutout creation
+num_download_workers = 5  # number of threads for tile download
+queue_size = 2  # max queue size, keep as low as possible to not consume too much RAM
+logging_level = logging.INFO
 
 
 def simulated_training_step(item):
-    """Stand-in for your actual training process. Takes an item from the dataset"""
+    """
+    Simulate training on one batch of data.
+
+    Args:
+        item (tuple): data package, (cutout stack, metadata, tile numbers)
+    """
+    logging.info(f'Simulating training on tile {item[2]}..')
+    process_time = random.uniform(50, 120)  # Random training duration
+    time.sleep(process_time)
+    logging.info(f'Processed: {item[2]} (simulated {process_time:.2f}s delay)')
     logging.info(
         f'Cutout shape: {item[0].shape}, cutout datatype: {item[0].dtype}. Length catalog: {len(item[1])}.'
     )
     if np.any(item[0] != 0):
-        logging.info(f'Cutout stack for tile {item[1]['tile'].values[0]} is not empty.')
-    process_time = random.uniform(50, 80)  # Random training duration
-    time.sleep(process_time)
-    logging.info(f'Processed: {item[1]['tile'].values[0]} (simulated {process_time:.2f}s delay)')
+        logging.info(f'Cutout stack for tile {item[2]} is not empty.')
 
 
 def main(
+    update,
     tile_info_dir,
     unions_det_dir,
     band_constr,
@@ -177,9 +178,15 @@ def main(
     num_objects,
     show_stats,
     cutout_workers,
+    download_workers,
     queue_size,
+    log_dir,
+    log_level,
 ):
+    setup_logging(log_dir, __file__, logging_level=logging.INFO)
+
     dataset = DataStream(
+        update,
         tile_info_dir,
         unions_det_dir,
         band_constr,
@@ -193,24 +200,32 @@ def main(
         num_objects,
         show_stats,
         cutout_workers,
+        download_workers,
         queue_size,
-    )  # Initialize your dataset
+    )  # Initialize dataset
 
-    num_iterations = 10  # How many batches you want to simulate
+    num_iterations = 6  # How many training steps should be simulated
+    # Prefill the queue to create a buffer
     if dataset.preload():
         logging.info('Preload finished.')
         for _ in range(num_iterations):
             try:
-                cutouts, catalog = dataset.__next__()
-                simulated_training_step((cutouts, catalog))
+                cutouts, catalog, tile = dataset.__next__()  # pull out the an item for training
+                logging.debug(f'Got tile {tile}.')
+                simulated_training_step((cutouts, catalog, tile))
+                del cutouts  # cleanup
+                del catalog
+                del tile
 
-            except StopIteration:
-                print('Dataset Exhausted.')
+            except KeyboardInterrupt:
                 break
+
+    logging.info('Max number of iterations reached. Stopping script.')
 
 
 if __name__ == '__main__':
     main(
+        update_tiles,
         tile_info_directory,
         unions_detection_directory,
         band_constraint,
@@ -223,6 +238,9 @@ if __name__ == '__main__':
         lens_catalog,
         number_objects,
         show_tile_statistics,
-        num_workers,
+        num_cutout_workers,
+        num_download_workers,
         queue_size,
+        log_directory,
+        logging_level,
     )

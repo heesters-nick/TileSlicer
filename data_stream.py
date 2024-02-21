@@ -2,14 +2,18 @@ import logging
 import os
 import queue
 import shutil
+import socket
 import threading  # Or multiprocessing, if preferred
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 
 import numpy as np
 import pandas as pd
 from astropy.io import fits
+
+# from memory_profiler import profile
 from torch.utils.data import IterableDataset
 from vos import Client
 
@@ -26,6 +30,7 @@ from utils import (
     load_available_tiles,
     read_h5,
     read_unions_cat,
+    setup_logging,
     update_available_tiles,
 )
 
@@ -157,32 +162,35 @@ os.makedirs(cutout_directory, exist_ok=True)
 figure_directory = os.path.join(main_directory, 'figures/')
 os.makedirs(figure_directory, exist_ok=True)
 # define where the logs should be saved
-log_dir = os.path.join(main_directory, 'logs/')
-os.makedirs(log_dir, exist_ok=True)
-
-# define the logger
-# log_file_name = 'datastream.log'
-# log_file_path = os.path.join(log_dir, log_file_name)
-
-# # Configure the logging module
-# logging.basicConfig(
-#     level=logging.INFO,
-#     format='%(asctime)s - %(levelname)s - %(message)s',
-#     handlers=[
-#         logging.FileHandler(log_file_path, mode='w'),
-#         logging.StreamHandler(),  # Add this line to also log to the console
-#     ],
-# )
+log_directory = os.path.join(main_directory, 'logs/')
+os.makedirs(log_directory, exist_ok=True)
 
 ### tile parameters ###
 band_constraint = 5  # define the minimum number of bands that should be available for a tile
 cutout_size = 224  # square cutout size in pixels
-num_workers = 5  # specifiy the number of threads for cutout creation
+num_cutout_workers = 5  # specifiy the number of threads for cutout creation
+num_download_workers = 5  # specifiy the number of threads for tile download
 number_objects = 30000
 
 
 # @nb.njit(nb.float32[:, :](nb.float32[:, :], nb.int32, nb.int32, nb.int32, nb.float32[:, :]))
 def cutout2d(data_, x, y, size, cutout_in):
+    """
+    Create 2d cutout from an image.
+
+    Args:
+        data_ (numpy.ndarray): image data
+        x (int): x-coordinate of cutout center
+        y (int): y-coordinate of cutout center
+        size (int): square cutout size
+        cutout_in (numpy.ndarray): empty input cutout
+
+    Raises:
+        ValueError: if specified cutout has no overlap with the image data
+
+    Returns:
+        numpy.ndarray: 2d cutout (size x size pixels)
+    """
     y_large, x_large = data_.shape
     size_half = size // 2
 
@@ -204,6 +212,20 @@ def cutout2d(data_, x, y, size, cutout_in):
 
 
 def cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band):
+    """
+    Extract cutouts for one of the bands.
+
+    Args:
+        tile (tuple): tile numbers
+        obj_in_tile (dataframe): detection dataframe containing object coordinates and metadata
+        download_dir (str): directory where tile data is stored
+        in_dict (dict): band dictionary
+        size (int): quare cutout size in pixels
+        band (str): band name
+
+    Returns:
+        numpy.ndarray: cutouts of all objects (n_objects, size, size)
+    """
     cutouts_for_band = np.zeros((len(obj_in_tile), size, size), dtype=np.float32)
     tile_dir = download_dir + f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
     prefix = in_dict[band]['name']
@@ -219,7 +241,7 @@ def cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band):
             os.path.join(tile_dir, tile_fitsfilename), memmap=True, mode='readonly'
         ) as hdul:
             data = hdul[fits_ext].data.astype(np.float32)  # type: ignore
-            logging.info(f'Opened {tile_fitsfilename}. Took {np.round(time.time()-fits_start, 2)}')
+            logging.debug(f'Opened {tile_fitsfilename}. Took {np.round(time.time()-fits_start, 2)}')
             cutout_empty = np.zeros((size, size), dtype=np.float32)
             xs, ys = (
                 np.floor(obj_in_tile.x.values + 0.5).astype(np.int32),
@@ -228,17 +250,31 @@ def cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band):
             cutout_start = time.time()
             for i, (x, y) in enumerate(zip(xs, ys)):
                 cutouts_for_band[i] = cutout2d(data, x, y, size, cutout_empty)
-            logging.info(
+            logging.debug(
                 f'Finished cutting {len(xs)} objects for {band} in {np.round(time.time()-cutout_start, 2)} seconds.'
             )
     except FileNotFoundError:
-        logging.info(f'File {tile_fitsfilename} not found.')
+        logging.error(f'File {tile_fitsfilename} not found.')
         return None
 
     return cutouts_for_band
 
 
 def cutout_all_bands(tile, in_dict, download_dir, obj_in_tile, size, workers):
+    """
+    Extract cutouts in all bands concurrently.
+
+    Args:
+        tile (tuple): tile numbers
+        in_dict (dict): band dictionary
+        download_dir (str): directory where tile data is stored
+        obj_in_tile (dataframe): detection dataframe containing object coordinates and metadata
+        size (int): square cutout size in pixels
+        workers (int): number of threads
+
+    Returns:
+        numpy.ndarray: cutout stack (n_objects, n_bands, size, size)
+    """
     n_bands = len(in_dict)
     final_cutouts = np.zeros((len(obj_in_tile), n_bands, size, size), dtype=np.float32)
 
@@ -271,6 +307,21 @@ def cutout_all_bands_mod(
     size,
     workers,
 ):
+    """
+    Modification of the cutout_all_bands_function above. Treats slow opening band files (whigs-g, wishes-z)
+    differently. Not sure if there is a benefit in terms of performance.
+
+    Args:
+        tile (tuple): tile numbers
+        in_dict (dict): band dictionary
+        download_dir (str): directory where tile data is stored
+        obj_in_tile (dataframe): detection dataframe containing object coordinates and metadata
+        size (int): square cutout size in pixels
+        workers (int): number of threads
+
+    Returns:
+        numpy.ndarray: cutout stack (n_objects, n_bands, size, size)
+    """
     n_bands = len(in_dict)
     slow_files = ['whigs-g', 'wishes-z']
     final_cutouts = np.zeros((len(obj_in_tile), n_bands, size, size), dtype=np.float32)
@@ -305,8 +356,17 @@ def cutout_all_bands_mod(
 
 
 class DataStream(IterableDataset):
+    """
+    This class ansynchronously downloads and preprocesses data from the VOSpace.
+    Model training can happen while new data is fetched and preprocessed.
+
+    Args:
+        IterableDataset (dataset): Pytorch dataset for streaming and preprocessing data.
+    """
+
     def __init__(
         self,
+        update_tiles,
         tile_info_dir,
         unions_det_dir,
         band_constr,
@@ -320,8 +380,10 @@ class DataStream(IterableDataset):
         num_objects,
         show_stats,
         cutout_workers,
+        download_workers,
         queue_size,
     ):
+        self.update_tiles = update_tiles
         self.tile_info_dir = tile_info_dir
         self.unions_det_dir = unions_det_dir
         self.band_constr = band_constr
@@ -335,7 +397,9 @@ class DataStream(IterableDataset):
         self.num_objects = num_objects
         self.show_stats = show_stats
         self.cutout_workers = cutout_workers
+        self.download_workers = download_workers
         self.queue_size = queue_size
+        self.tiles_in_queue = deque()
 
         # maxsize determines how long the queue should be
         self.prefetch_queue = queue.Queue(maxsize=self.queue_size)
@@ -344,13 +408,19 @@ class DataStream(IterableDataset):
         # Initialize a lock for synchronizing access to the queue
         self.queue_lock = threading.Lock()
 
-        # # Start the tile fetching and processing thread
+        # Initialize tile fetching and processing thread
         self.fetch_thread = threading.Thread(target=self._fetch_and_preprocess_tiles)
-        # self.fetch_thread.start()
+        # Daemonize the thread to stop when the main thread stops
+        self.fetch_thread.daemon = True
 
     def _initialize_tiles(self):
+        """
+        Initialize the list of tiles to process.
+        """
         logging.info('Initializing tiles..')
-        # Extract available tile numbers using your existing functions
+        if self.update_tiles:
+            update_available_tiles(self.tile_info_dir)
+        # Extract available tile numbers from file
         u, g, lsb_r, i, z = extract_tile_numbers(load_available_tiles(self.tile_info_dir))
         all_bands = [u, g, lsb_r, i, z]
         self.availability = TileAvailability(all_bands, self.in_dict, self.at_least_key)
@@ -368,6 +438,12 @@ class DataStream(IterableDataset):
         self.current_tile_index = 0
 
     def _determine_next_tile(self):
+        """
+        Deliver tile numbers of the next tile.
+
+        Returns:
+            tuple: tile numbers
+        """
         if self.current_tile_index >= len(self.tiles_x_bands):
             return None  # Indicates no more tiles left
 
@@ -376,26 +452,31 @@ class DataStream(IterableDataset):
         return tile_nums
 
     def _fetch_and_preprocess_tiles(self):
-        logging.info('Fetching started.')
-        self.fetch_start = time.time()
+        """
+        Concurrently downloads new data, prepares object catalog, extracts cutouts.
+        """
         while True:
+            # Wait for an empty spot in the queue
+            while self.prefetch_queue.qsize() >= self.queue_size:
+                time.sleep(1)
+            logging.debug('Queue spot available.')
             tile_info = self._determine_next_tile()
             if tile_info is None:
                 break  # No more tiles left
             logging.info(f'Fetching tile {tuple(tile_info)}..')
+            self.fetch_start = time.time()
+
             # Set up events and instance variables to monitor thread completion and success
             download_event = threading.Event()
             self.download_success = False
             catalog_event = threading.Event()
             self.catalog_success = False
 
-            # Start tile download and pre-processing in a separate thread
             download_thread = threading.Thread(
                 target=self._download_tile, args=(tile_info, download_event)
             )
             download_thread.start()
 
-            # Process the object catalog concurrently
             catalog_thread = threading.Thread(
                 target=self._process_catalog, args=(tile_info, catalog_event)
             )
@@ -413,16 +494,29 @@ class DataStream(IterableDataset):
                 continue
 
     def _download_tile(self, tile_nums, download_event, max_retries=3, retry_delay=5):
+        """
+        Download tile concurrently in all available bands.
+
+        Args:
+            tile_nums (tuple): tile numbers
+            download_event (threading.event): signals process completion
+            max_retries (int, optional): max number of retries if a download fails. Defaults to 3.
+            retry_delay (int, optional): delay in seconds before trying again. Defaults to 5.
+        """
         download_start = time.time()
+        logging.info(f'Downloading tile {tile_nums}..')
         retries = 0
         while retries < max_retries:
             try:
-                # Download tile using your existing function
                 if download_tile_for_bands_parallel(
-                    self.availability, tile_nums, self.in_dict, self.download_dir
+                    self.availability,
+                    tile_nums,
+                    self.in_dict,
+                    self.download_dir,
+                    self.download_workers,
                 ):
-                    download_event.set()  # Signal that download is finished
-                    self.download_success = True  # Download successful
+                    download_event.set()  # Signal that process is finished
+                    self.download_success = True
                     logging.info(
                         f'Successfully downloaded tile {tile_nums} in {np.round(time.time()-download_start, 2)} seconds.'
                     )
@@ -433,42 +527,60 @@ class DataStream(IterableDataset):
             retries += 1
             if retries < max_retries:
                 logging.info(f'Retrying download for tile {tile_nums}...')
-                time.sleep(retry_delay)  # Wait before retrying
+                time.sleep(retry_delay)
 
         logging.error(f'Failed to download tile {tile_nums} after {max_retries} attempts.')
         self.download_success = False
-        # Signal event is finished
-        download_event.set()
+        download_event.set()  # Signal that process is finished
+
+        # Cleanup: Close any open network connections
+        socket.setdefaulttimeout(None)
 
     def _process_catalog(self, tile_nums, catalog_event):
+        """
+        Read UNIONS detection catalog, cross-match with known objects, add labels to catalog
+
+        Args:
+            tile_nums (tuple): tile numbers
+            catalog_event (threading.event): signals process completion
+        """
         catalog_start = time.time()
+        logging.info(f'Reading catalog for tile {tile_nums}, adding labels to the catalog..')
         try:
             avail_bands = ''.join(self.availability.get_availability(tile_nums)[0])
             obj_in_tile = read_unions_cat(self.unions_det_dir, tile_nums)
-            # add tile numbers to object dataframe
             obj_in_tile['tile'] = str(tile_nums)
-            # add available bands to object dataframe
             obj_in_tile['bands'] = str(avail_bands)
-            # add labels to the objects in the tile
             obj_in_tile = add_labels(
                 obj_in_tile, self.dwarf_cat, self.z_class_cat, self.lens_cat, tile_nums
             )
-            # only cutout part of the objects for testing
+            # control the max number of objects that should be cut out
             obj_in_tile = obj_in_tile[: self.num_objects].reset_index(drop=True)
             self.processed_catalog = obj_in_tile
             self.catalog_success = True
         except Exception as e:
             logging.exception(f'Failed to process the object catalog for tile {tile_nums}: {e}.')
             self.catalog_success = False
-        logging.info(f'Catalog processing took: {np.round(time.time()-catalog_start)} seconds.')
+        logging.info(
+            f'Finished processing catalog for tile {tile_nums} in: {np.round(time.time()-catalog_start)} seconds.'
+        )
         # signal that catalog processing is finished
         catalog_event.set()
 
-    def _extract_cutouts(self, obj_catalog, tile_nums):
-        # len(obj_catalog) determines batch size
+    def _extract_cutouts(self, obj_catalog, tile_nums, cutout_event):
+        """
+        Extract cutouts for the objects in the catalog in all available bands.
+
+        Args:
+            obj_catalog (dataframe): object catalog
+            tile_nums (tuple): tile numbers
+            cutout_event (threading.event): signals process completion
+        """
         cutout_start = time.time()
+        self.cutout_stack = None
+        logging.info(f'Cutting up tile {tile_nums}.')
         try:
-            cutout_stack = cutout_all_bands(
+            self.cutout_stack = cutout_all_bands(
                 tile_nums,
                 self.in_dict,
                 self.download_dir,
@@ -477,24 +589,48 @@ class DataStream(IterableDataset):
                 self.cutout_workers,
             )
             logging.info(
-                f'Finished cutting in tile {tile_nums} in {np.round(time.time()-cutout_start, 2)} seconds.'
+                f'Finished cutting tile {tile_nums} in {np.round(time.time()-cutout_start, 2)} seconds.'
             )
-            return cutout_stack
+            self.cutout_success = True
+
         except Exception as e:
             logging.exception(f'Something went wrong in cutout generation: {e}')
-            return None
+            self.cutout_stack = None
+            self.cutout_success = False
+        finally:
+            # signal that the process is completed
+            cutout_event.set()
 
     def _extract_and_queue_cutouts(self, tile_nums):
-        obj_catalog = self.processed_catalog  # Get processed object catalog
-        cutout_batch = self._extract_cutouts(obj_catalog, tile_nums)
+        """
+        Extract cutouts in a separate thread and add the finished data product to the queue.
 
-        # Acquire lock before accessing shared queue
-        with self.queue_lock:
-            self.prefetch_queue.put((cutout_batch, obj_catalog))
+        Args:
+            tile_nums (tuple): tile numbers
+        """
+        obj_catalog = self.processed_catalog
 
-        logging.info(
-            f'Fetch start to finished data product in {np.round(time.time()-self.fetch_start, 2)} seconds.'
+        cutout_event = threading.Event()
+        self.cutout_success = False
+
+        cutout_thread = threading.Thread(
+            target=self._extract_cutouts, args=(obj_catalog, tile_nums, cutout_event)
         )
+        cutout_thread.start()
+        cutout_event.wait()
+
+        if self.cutout_stack is not None:
+            # Acquire lock before accessing shared queue
+            with self.queue_lock:
+                # put data package in the queue
+                self.prefetch_queue.put((self.cutout_stack, obj_catalog, tile_nums))
+                self.tiles_in_queue.append(tile_nums)  # track tiles in the queue
+
+            logging.info(
+                f'Fetch start to finished data product in {np.round(time.time()-self.fetch_start, 2)} seconds.'
+            )
+        else:
+            logging.info(f'Failed creating cutouts for tile {tile_nums}.')
 
         tile_folder = os.path.join(
             self.download_dir, f'{str(tile_nums[0]).zfill(3)}_{str(tile_nums[1]).zfill(3)}'
@@ -504,30 +640,70 @@ class DataStream(IterableDataset):
             shutil.rmtree(tile_folder)
 
     def preload(self):
+        """
+        Prefill the queue to create a data buffer when training starts.
+
+        Returns:
+            bool: preload finished
+        """
         self.fetch_thread.start()
 
-        for _ in range(self.queue_size):
-            self.prefetch_queue.get()  # Block and wait for each batch
+        # Wait until the queue is full
+        while not self.prefetch_queue.full():
+            time.sleep(0.5)
+
+        with self.queue_lock:
+            logging.info(f'Queue is filled with {self.prefetch_queue.qsize()} items.')
+            logging.info(f'Tiles in queue: {list(self.tiles_in_queue)}.')
 
         return True
+
+    def items_in_queue(self):
+        """
+        Check how many items are currently in the queue.
+
+        Returns:
+            int: number of items currently in the queue
+        """
+
+        with self.queue_lock:
+            return self.prefetch_queue.qsize()
 
     def __iter__(self):
         return self
 
     def __next__(self):
+        """
+        Pulls out the next data product.
+
+        Returns:
+            tuple: cutout stack, processed catalog, tile numbers
+        """
         logging.info('Pulling next tile.')
         with self.queue_lock:  # Thread lock the queue while accessing it
+            logging.info(f'Tiles in queue: {list(self.tiles_in_queue)}.')
+            logging.debug(f'Queue size: {self.prefetch_queue.qsize()}')
             start_wait_time = time.time()
             while self.prefetch_queue.empty():
                 self.queue_lock.release()  # Release the lock while waiting
                 time.sleep(0.1)  # Sleep briefly to avoid busy waiting
                 self.queue_lock.acquire()  # Reacquire the lock before checking the queue again
 
+            # monitor downtime
             wait_time = time.time() - start_wait_time
-            logging.info(f'Waited for {wait_time:.2f} seconds for the next tile. Not good.')
+            if wait_time > 10 ** (-3):
+                logging.warning(
+                    f'There was a {np.round(wait_time, 2)} second downtime. Adapt max queue length.'
+                )
+            else:
+                logging.info('No downtime recorded when pulling next item from the queue.')
 
-            # Get the next data package once the queue is not empty
-            return self.prefetch_queue.get()
+            cutout_stack, obj_catalog, tile_nums = self.prefetch_queue.get()
+            logging.info(f'Pulled tile {tile_nums} from the queue.')
+            self.tiles_in_queue.popleft()
+            logging.debug(f'Tiles in queue after pull: {list(self.tiles_in_queue)}')
+
+            return cutout_stack, obj_catalog, tile_nums
 
 
 def main(
@@ -548,6 +724,7 @@ def main(
     unions_det_dir,
     size,
     workers,
+    dl_workers,
     num_objects,
     update,
     show_stats,
@@ -556,8 +733,11 @@ def main(
     w_plot,
     show_plt,
     save_plt,
+    log_dir,
 ):
     scrip_start = time.time()
+
+    setup_logging(log_dir, __file__, logging_level=logging.INFO)
 
     if update:
         update_available_tiles(tile_info_dir)
@@ -579,7 +759,7 @@ def main(
     logging.info('Downloading the tiles in the available bands..')
     for tile in tiles_x_bands:
         start_download = time.time()
-        if download_tile_for_bands_parallel(availability, tile, in_dict, download_dir):
+        if download_tile_for_bands_parallel(availability, tile, in_dict, download_dir, dl_workers):
             logging.info(
                 f'Tile downloaded in all available bands. Took {np.round(time.time() - start_download, 2)} seconds.'
             )
@@ -670,7 +850,8 @@ if __name__ == '__main__':
         'table_dir': table_directory,
         'unions_det_dir': unions_detection_directory,
         'size': cutout_size,
-        'workers': num_workers,
+        'workers': num_cutout_workers,
+        'dl_workers': num_download_workers,
         'num_objects': number_objects,
         'update': update_tiles,
         'show_stats': show_tile_statistics,
@@ -679,6 +860,7 @@ if __name__ == '__main__':
         'w_plot': with_plot,
         'show_plt': show_plot,
         'save_plt': save_plot,
+        'log_dir': log_directory,
     }
 
     start = time.time()
