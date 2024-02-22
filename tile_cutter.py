@@ -547,10 +547,11 @@ def process_tile(
 
     if w_unions_cats:
         obj_in_tile = read_unions_cat(unions_table_dir, tile)
-        obj_in_tile['tile'] = str(tile)
-        obj_in_tile['bands'] = str(avail_bands)
-        obj_in_tile = add_labels(obj_in_tile, dwarf_cat, z_class_cat, lens_cat)
-        if obj_in_tile is None:
+        if obj_in_tile is not None:
+            obj_in_tile['tile'] = str(tile)
+            obj_in_tile['bands'] = str(avail_bands)
+            obj_in_tile = add_labels(obj_in_tile, dwarf_cat, z_class_cat, lens_cat, tile)
+        else:
             logging.info(f'No objects cut out in tile {tile}.')
             return 0, 0, 0, 0
 
@@ -613,7 +614,7 @@ def process_tile(
             logging.info(f'Tile {tile} has already been processed.')
             return 0, len(obj_in_tile), len(obj_in_tile), True
 
-        obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat, lens_cat)
+        obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat, lens_cat, tile)
         if obj_in_tile is None:
             logging.info(f'No objects cut out in tile {tile}.')
             return 0, 0, 0, 0

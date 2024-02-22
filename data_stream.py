@@ -549,15 +549,18 @@ class DataStream(IterableDataset):
         try:
             avail_bands = ''.join(self.availability.get_availability(tile_nums)[0])
             obj_in_tile = read_unions_cat(self.unions_det_dir, tile_nums)
-            obj_in_tile['tile'] = str(tile_nums)
-            obj_in_tile['bands'] = str(avail_bands)
-            obj_in_tile = add_labels(
-                obj_in_tile, self.dwarf_cat, self.z_class_cat, self.lens_cat, tile_nums
-            )
-            # control the max number of objects that should be cut out
-            obj_in_tile = obj_in_tile[: self.num_objects].reset_index(drop=True)
-            self.processed_catalog = obj_in_tile
-            self.catalog_success = True
+            if obj_in_tile is not None:
+                obj_in_tile['tile'] = str(tile_nums)
+                obj_in_tile['bands'] = str(avail_bands)
+                obj_in_tile = add_labels(
+                    obj_in_tile, self.dwarf_cat, self.z_class_cat, self.lens_cat, tile_nums
+                )
+                # control the max number of objects that should be cut out
+                obj_in_tile = obj_in_tile[: self.num_objects].reset_index(drop=True)
+                self.processed_catalog = obj_in_tile
+                self.catalog_success = True
+            else:
+                self.catalog_success = False
         except Exception as e:
             logging.exception(f'Failed to process the object catalog for tile {tile_nums}: {e}.')
             self.catalog_success = False
@@ -774,21 +777,27 @@ def main(
 
         # get objects to cut out
         obj_in_tile = read_unions_cat(unions_det_dir, tile)
-        # add tile numbers to object dataframe
-        obj_in_tile['tile'] = str(tile)
-        # add available bands to object dataframe
-        obj_in_tile['bands'] = str(avail_bands)
+        if obj_in_tile is not None:
+            # add tile numbers to object dataframe
+            obj_in_tile['tile'] = str(tile)
+            # add available bands to object dataframe
+            obj_in_tile['bands'] = str(avail_bands)
 
-        # add labels to the objects in the tile
-        obj_in_tile = add_labels(obj_in_tile, dwarf_cat, z_class_cat, lens_cat, tile)
+            # add labels to the objects in the tile
+            obj_in_tile = add_labels(obj_in_tile, dwarf_cat, z_class_cat, lens_cat, tile)
 
-        # only cutout part of the objects for testing
-        obj_in_tile = obj_in_tile[:num_objects].reset_index(drop=True)
+            # only cutout part of the objects for testing
+            obj_in_tile = obj_in_tile[:num_objects].reset_index(drop=True)
 
-        cutting_start = time.time()
-        cutout = cutout_all_bands(tile, in_dict, download_dir, obj_in_tile, size, workers)
-        logging.info(f'Cutting finished. Took {np.round(time.time()-cutting_start, 2)} seconds.')
-        logging.info(f'Start to cutouts done took {np.round(time.time()-scrip_start, 2)}')
+            cutting_start = time.time()
+            cutout = cutout_all_bands(tile, in_dict, download_dir, obj_in_tile, size, workers)
+            logging.info(
+                f'Cutting finished. Took {np.round(time.time()-cutting_start, 2)} seconds.'
+            )
+            logging.info(f'Start to cutouts done took {np.round(time.time()-scrip_start, 2)}')
+        else:
+            logging.info(f'No objects in tile {tile}.')
+            cutout = None
 
         # save_to_h5(
         #     cutout,

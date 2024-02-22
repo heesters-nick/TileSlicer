@@ -213,12 +213,12 @@ class TileAvailability:
             self.band_dict[list(self.band_dict.keys())[i]]['band'] for i in bands_available
         ], bands_available
 
-    def band_tiles(self, band):
+    def band_tiles(self, band=None):
         return np.array(self.unique_tiles)[
             self.availability_matrix[:, list(self.band_dict.keys()).index(band)] == 1
         ]
 
-    def stats(self, band):
+    def stats(self, band=None):
         print('\nNumber of currently available tiles per band:\n')
         max_band_name_length = max(map(len, self.band_dict.keys()))  # for output format
         for band_name, count in zip(
@@ -507,7 +507,7 @@ def add_labels(det_df, dwarf_cat, z_class_cat, lens_cat, tile_nums):
 
     if len(lsb_unmatches) > 0:
         logging.debug(
-            f'Found {len(lsb_unmatches)} undetected but known dwarfs in tile {dwarfs_df.tile[0]}.'
+            f'Found {len(lsb_unmatches)} undetected but known dwarfs in tile {dwarfs_df.tile[0]}.'  # type: ignore
         )
         lsb_unmatches.loc[:, 'lsb'] = 1  # dwarfs are LSB
         lsb_unmatches.loc[:, 'class'] = 2  # dwarfs are galaxies
