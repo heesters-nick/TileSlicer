@@ -89,15 +89,24 @@ show_plot = False
 # Save plot
 save_plot = True
 
+platform = 'CANFAR':
+if platform == 'CANFAR':
+    root_dir_main = '/arc/home/ashley/SSL/'
+    root_dir_data = '/arc/projects/unions/'
+else: # assume compute canada for now
+    root_dir_main = '/home/a4ferrei/scratch/'
+    root_dir_data = '/home/a4ferrei/scratch/github/'
+
+
 # paths
 # define the root directory
-main_directory = '/arc/home/ashley/SSL/git/TileSlicer/'
-data_directory = '/arc/projects/unions/ssl/data/'
+main_directory = root_dir_main + 'git/TileSlicer/'
+data_directory = root_dir_data + 'ssl/data/'
 download_directory = '/arc/projects/unions/ssl/data/processed/unions-cutouts/ugriz_lsb/10k_per_h5/nick_cutouts/'
 table_directory = os.path.join(main_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
 # define UNIONS table directory
-unions_table_directory = '/arc/projects/unions/catalogues/'
+unions_table_directory = root_dir_data + 'catalogues/'
 # define the path to the UNIONS detection catalogs
 unions_detection_directory = os.path.join(
     unions_table_directory, 'unions/GAaP_photometry/UNIONS2000/'
