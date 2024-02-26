@@ -62,7 +62,7 @@ band_dict = {
 
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = True
+update_tiles = False
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -91,8 +91,9 @@ save_plot = True
 
 # paths
 # define the root directory
-main_directory = '/arc/home/heestersnick/tileslicer/'
+main_directory = '/arc/home/ashley/SSL/git/TileSlicer/'
 data_directory = '/arc/projects/unions/ssl/data/'
+download_directory = '/arc/projects/unions/ssl/data/processed/unions-cutouts/ugriz_lsb/10k_per_h5/nick_cutouts/'
 table_directory = os.path.join(main_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
 # define UNIONS table directory
@@ -119,26 +120,26 @@ catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))
 # define the keys for ra, dec, and id in the catalog
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
-tile_info_directory = os.path.join(main_directory, 'tile_info/')
+tile_info_directory = os.path.join(download_directory, 'tile_info/')
 os.makedirs(tile_info_directory, exist_ok=True)
 # define where the tiles should be saved
-download_directory = os.path.join(data_directory, 'raw/tiles/tiles2024/')
+download_directory = os.path.join(download_directory, 'raw/tiles/tiles2024/')
 os.makedirs(download_directory, exist_ok=True)
 # define where the cutouts should be saved
 # cutout_directory = os.path.join(data_directory, 'processed/unions-cutouts/cutouts2024/')
 # os.makedirs(cutout_directory, exist_ok=True)
-cutout_directory = os.path.join(main_directory, 'cutouts/')
+cutout_directory = os.path.join(download_directory, 'cutouts/')
 os.makedirs(cutout_directory, exist_ok=True)
 # define where figures should be saved
-figure_directory = os.path.join(main_directory, 'figures/')
+figure_directory = os.path.join(download_directory, 'figures/')
 os.makedirs(figure_directory, exist_ok=True)
 # define where the logs should be saved
-log_directory = os.path.join(main_directory, 'logs/')
+log_directory = os.path.join(download_directory, 'logs/')
 os.makedirs(log_directory, exist_ok=True)
 
 band_constraint = 5  # define the minimum number of bands that should be available for a tile
 cutout_size = 224
-number_objects = 30000
+number_objects = 256
 num_cutout_workers = 5  # number of threads for cutout creation
 num_download_workers = 5  # number of threads for tile download
 queue_size = 2  # max queue size, keep as low as possible to not consume too much RAM

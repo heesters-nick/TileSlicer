@@ -120,8 +120,9 @@ save_plot = True
 
 # paths
 # define the root directory
-main_directory = '/arc/home/heestersnick/tileslicer/'
+main_directory = '/arc/home/ashley/SSL/git/TileSlicer/'
 data_directory = '/arc/projects/unions/ssl/data/'
+download_directory = '/arc/projects/unions/ssl/data/processed/unions-cutouts/ugriz_lsb/10k_per_h5/nick_cutouts/'
 table_directory = os.path.join(main_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
 # define UNIONS table directory
@@ -151,18 +152,18 @@ ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 tile_info_directory = os.path.join(main_directory, 'tile_info/')
 os.makedirs(tile_info_directory, exist_ok=True)
 # define where the tiles should be saved
-download_directory = os.path.join(data_directory, 'raw/tiles/tiles2024/')
+download_directory = os.path.join(download_directory, 'raw/tiles/tiles2024/')
 os.makedirs(download_directory, exist_ok=True)
 # define where the cutouts should be saved
 # cutout_directory = os.path.join(data_directory, 'processed/unions-cutouts/cutouts2024/')
 # os.makedirs(cutout_directory, exist_ok=True)
-cutout_directory = os.path.join(main_directory, 'cutouts/')
+cutout_directory = os.path.join(download_directory, 'cutouts/')
 os.makedirs(cutout_directory, exist_ok=True)
 # define where figures should be saved
-figure_directory = os.path.join(main_directory, 'figures/')
+figure_directory = os.path.join(download_directory, 'figures/')
 os.makedirs(figure_directory, exist_ok=True)
 # define where the logs should be saved
-log_directory = os.path.join(main_directory, 'logs/')
+log_directory = os.path.join(download_directory, 'logs/')
 os.makedirs(log_directory, exist_ok=True)
 
 ### tile parameters ###

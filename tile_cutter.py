@@ -124,7 +124,7 @@ save_plot = True
 
 # paths
 # define the root directory
-main_directory = '/arc/home/heestersnick/tileslicer/'
+main_directory = '/arc/home/ashley/SSL/git/TileSlicer/'
 data_directory = '/arc/projects/unions/ssl/data/'
 table_directory = os.path.join(main_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
