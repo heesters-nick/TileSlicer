@@ -118,7 +118,7 @@ show_plot = False
 # Save plot
 save_plot = True
 
-platform = 'CANFAR'
+platform = 'cedar' #'CANFAR'
 if platform == 'CANFAR':
     root_dir_main = '/arc/home/ashley/SSL/'
     root_dir_data = '/arc/projects/unions/'
