@@ -94,8 +94,8 @@ if platform == 'CANFAR':
     root_dir_main = '/arc/home/ashley/SSL/'
     root_dir_data = '/arc/projects/unions/'
 else: # assume compute canada for now
-    root_dir_main = '/home/a4ferrei/scratch/'
-    root_dir_data = '/home/a4ferrei/scratch/github/'
+    root_dir_main = '/home/a4ferrei/scratch/github/'
+    root_dir_data = root_dir_main
 
 
 # paths

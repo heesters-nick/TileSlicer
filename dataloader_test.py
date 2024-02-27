@@ -14,3 +14,6 @@ for _ in range(num_iterations):
 
     except KeyboardInterrupt:
         break
+ 
+# note that it is likely worth adding something that will wipe the  
+# download directory once program is done (or when new one starts)
