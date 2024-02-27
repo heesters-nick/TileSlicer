@@ -122,17 +122,17 @@ show_plot = False
 # Save plot
 save_plot = True
 
-platform = 'CANFAR'
+platform = 'cedar' #'CANFAR'
 if platform == 'CANFAR':
-    root_dir_main = '/arc/home/ashley/SSL/'
+    root_dir_main = '/arc/home/ashley/SSL/git/'
     root_dir_data = '/arc/projects/unions/'
 else: # assume compute canada for now
-    root_dir_main = '/home/a4ferrei/scratch/'
-    root_dir_data = '/home/a4ferrei/scratch/github/' #'/home/a4ferrei/projects/rrg-kyi/a4ferrei'
+    root_dir_main = '/home/a4ferrei/scratch/github/'
+    root_dir_data = root_dir_main
 
 # paths
 # define the root directory
-main_directory = root_dir_main + 'git/TileSlicer/'
+main_directory = root_dir_main + 'TileSlicer/'
 data_directory = root_dir_data + 'ssl/data/'
 table_directory = os.path.join(main_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
