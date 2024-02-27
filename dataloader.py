@@ -190,8 +190,7 @@ def dataset_wrapper():
         show_tile_statistics,
         num_cutout_workers,
         num_download_workers,
-        queue_size,
-        logging_level,)
+        queue_size,)
 
     # Prefill the queue to create a buffer
     if dataset.preload():
