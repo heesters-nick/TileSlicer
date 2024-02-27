@@ -97,7 +97,7 @@ if platform == 'CANFAR':
 else: # assume compute canada for now
     root_dir_main = '/home/a4ferrei/scratch/github/'
     root_dir_data = root_dir_main
-    root_dir_downloads = '/home/a4ferrei/scratch/data/'
+    root_dir_downloads = root_dir_main
 
 
 # paths
