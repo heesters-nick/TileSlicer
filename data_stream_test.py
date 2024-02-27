@@ -131,7 +131,7 @@ catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))
 # define the keys for ra, dec, and id in the catalog
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
-tile_info_directory = os.path.join(download_directory, 'tile_info/')
+tile_info_directory = os.path.join(main_directory, 'tile_info/')
 os.makedirs(tile_info_directory, exist_ok=True)
 # define where the tiles should be saved
 download_directory = os.path.join(download_directory, 'raw/tiles/tiles2024/')

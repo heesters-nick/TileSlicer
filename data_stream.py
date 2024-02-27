@@ -749,6 +749,7 @@ def main(
     save_plt,
     log_dir,
 ):
+    print('#############', tile_info_dir)
     scrip_start = time.time()
 
     setup_logging(log_dir, __file__, logging_level=logging.INFO)
