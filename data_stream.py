@@ -122,15 +122,18 @@ platform = 'cedar' #'CANFAR'
 if platform == 'CANFAR':
     root_dir_main = '/arc/home/ashley/SSL/git/'
     root_dir_data = '/arc/projects/unions/'
+    root_dir_downloads = '/arc/projects/unions/ssl/data/processed/unions-cutouts/ugriz_lsb/10k_per_h5/'
 else: # assume compute canada for now
     root_dir_main = '/home/a4ferrei/scratch/github/'
     root_dir_data = root_dir_main
+    root_dir_downloads = '/home/a4ferrei/scratch/data/'
+
 
 # paths
 # define the root directory
-main_directory = root_dir_main + '/TileSlicer/'
+main_directory = root_dir_main + 'TileSlicer/'
 data_directory = root_dir_data + 'ssl/data/'
-download_directory = '/arc/projects/unions/ssl/data/processed/unions-cutouts/ugriz_lsb/10k_per_h5/nick_cutouts/'
+download_directory = root_dir_downloads + 'nick_cutouts/'
 table_directory = os.path.join(main_directory, 'tables/')
 os.makedirs(table_directory, exist_ok=True)
 # define UNIONS table directory
