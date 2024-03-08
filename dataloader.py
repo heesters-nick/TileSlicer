@@ -150,7 +150,7 @@ os.makedirs(log_directory, exist_ok=True)
 
 band_constraint = 5  # define the minimum number of bands that should be available for a tile
 cutout_size = 224
-number_objects = 1000 # bring back to 30k for the real deal
+number_objects = 256 # bring back to 30k for the real deal
 num_cutout_workers = 5  # number of threads for cutout creation
 num_download_workers = 5  # number of threads for tile download
 queue_size = 2  # max queue size, keep as low as possible to not consume too much RAM
