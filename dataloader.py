@@ -154,7 +154,7 @@ number_objects = 256 # bring back to 30k for the real deal
 num_cutout_workers = 5  # number of threads for cutout creation
 num_download_workers = 5  # number of threads for tile download
 queue_size = 2  # max queue size, keep as low as possible to not consume too much RAM
-logging_level = logging.INFO
+##logging_level = logging.INFO
 
 
 def run_training_step(item):
@@ -175,7 +175,7 @@ def run_training_step(item):
 
 def dataset_wrapper():
 
-    setup_logging(log_directory, __file__, logging_level=logging.INFO)
+    ##setup_logging(log_directory, __file__, logging_level=logging.INFO)
     dataset = DataStream(
         update_tiles,
         tile_info_directory,
@@ -196,6 +196,6 @@ def dataset_wrapper():
 
     # Prefill the queue to create a buffer
     if dataset.preload():
-        logging.info('Preload finished.')
+        print('Preload finished.')
 
         return dataset

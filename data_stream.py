@@ -428,7 +428,7 @@ class DataStream(IterableDataset):
         """
         Initialize the list of tiles to process.
         """
-        logging.info('Initializing tiles..')
+        print('Initializing tiles..')
         if self.update_tiles:
             update_available_tiles(self.tile_info_dir)
         # Extract available tile numbers from file
@@ -444,7 +444,7 @@ class DataStream(IterableDataset):
         _, self.tiles_x_bands = tiles_from_unions_catalogs(
             self.availability, self.unions_det_dir, self.band_constr
         )
-        logging.info('Finished initializing tiles.')
+        print('Finished initializing tiles.')
         # Initialize tile index (for tracking which tile to process next)
         self.current_tile_index = 0
 

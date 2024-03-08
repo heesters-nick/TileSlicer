@@ -84,36 +84,36 @@ def update_available_tiles(path, save=True):
     Returns:
         None
     """
-    logging.info('Updating available tile lists from the VOSpace.')
-    logging.info('Retrieving u-band tiles...')
+    print('Updating available tile lists from the VOSpace.')
+    print('Retrieving u-band tiles...')
     start_u = time.time()
     cfis_u_tiles = client.glob1('vos:cfis/tiles_DR5/', '*u.fits')
     end_u = time.time()
-    logging.info(
+    print(
         f'Retrieving u-band tiles completed. Took {np.round((end_u-start_u)/60, 3)} minutes.'
     )
-    logging.info('Retrieving g-band tiles...')
+    print('Retrieving g-band tiles...')
     whigs_g_tiles = client.glob1('vos:cfis/whigs/stack_images_CFIS_scheme/', '*.fits')
     end_g = time.time()
-    logging.info(
+    print(
         f'Retrieving g-band tiles completed. Took {np.round((end_g-end_u)/60, 3)} minutes.'
     )
-    logging.info('Retrieving r-band tiles...')
+    print('Retrieving r-band tiles...')
     cfis_lsb_r_tiles = client.glob1('vos:cfis/tiles_LSB_DR5/', '*.fits')
     end_r = time.time()
-    logging.info(
+    print(
         f'Retrieving r-band tiles completed. Took {np.round((end_r-end_g)/60, 3)} minutes.'
     )
-    logging.info('Retrieving i-band tiles...')
+    print('Retrieving i-band tiles...')
     ps_i_tiles = client.glob1('vos:cfis/panstarrs/DR3/tiles/', '*i.fits')
     end_i = time.time()
-    logging.info(
+    print(
         f'Retrieving i-band tiles completed. Took {np.round((end_i-end_r)/60, 3)} minutes.'
     )
-    logging.info('Retrieving z-band tiles...')
+    print('Retrieving z-band tiles...')
     wishes_z_tiles = client.glob1('vos:cfis/wishes_1/coadd/', '*.fits')
     end_z = time.time()
-    logging.info(
+    print(
         f'Retrieving z-band tiles completed. Took {np.round((end_z-end_i)/60, 3)} minutes.'
     )
     if save:
