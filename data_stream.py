@@ -30,7 +30,7 @@ from utils import (
     load_available_tiles,
     read_h5,
     read_unions_cat,
-    setup_logging,
+    #setup_logging,
     update_available_tiles,
 )
 
@@ -252,7 +252,7 @@ def cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band):
             os.path.join(tile_dir, tile_fitsfilename), memmap=True, mode='readonly'
         ) as hdul:
             data = hdul[fits_ext].data.astype(np.float32)  # type: ignore
-            logging.debug(f'Opened {tile_fitsfilename}. Took {np.round(time.time()-fits_start, 2)}')
+            print(f'Opened {tile_fitsfilename}. Took {np.round(time.time()-fits_start, 2)}')
             cutout_empty = np.zeros((size, size), dtype=np.float32)
             xs, ys = (
                 np.floor(obj_in_tile.x.values + 0.5).astype(np.int32),
@@ -261,11 +261,11 @@ def cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band):
             cutout_start = time.time()
             for i, (x, y) in enumerate(zip(xs, ys)):
                 cutouts_for_band[i] = cutout2d(data, x, y, size, cutout_empty)
-            logging.debug(
+            print(
                 f'Finished cutting {len(xs)} objects for {band} in {np.round(time.time()-cutout_start, 2)} seconds.'
             )
     except FileNotFoundError:
-        logging.error(f'File {tile_fitsfilename} not found.')
+        print(f'File {tile_fitsfilename} not found.')
         return None
 
     return cutouts_for_band
@@ -305,7 +305,7 @@ def cutout_all_bands(tile, in_dict, download_dir, obj_in_tile, size, workers):
                 if result is not None:
                     final_cutouts[:, band_idx] = result
             except Exception as e:
-                logging.exception(f'Failed to process band {band} for tile {tile}: {str(e)}')
+                print(f'Failed to process band {band} for tile {tile}: {str(e)}')
 
     return final_cutouts
 
@@ -361,7 +361,7 @@ def cutout_all_bands_mod(
                 if result is not None:
                     final_cutouts[:, band_idx] = result
             except Exception as e:
-                logging.exception(f'Failed to process band {band} for tile {tile}: {str(e)}')
+                print(f'Failed to process band {band} for tile {tile}: {str(e)}')
 
     return final_cutouts
 
@@ -470,11 +470,11 @@ class DataStream(IterableDataset):
             # Wait for an empty spot in the queue
             while self.prefetch_queue.qsize() >= self.queue_size:
                 time.sleep(1)
-            logging.debug('Queue spot available.')
+            print('Queue spot available.')
             tile_info = self._determine_next_tile()
             if tile_info is None:
                 break  # No more tiles left
-            logging.info(f'Fetching tile {tuple(tile_info)}..')
+            print(f'Fetching tile {tuple(tile_info)}..')
             self.fetch_start = time.time()
 
             # Set up events and instance variables to monitor thread completion and success
@@ -515,7 +515,7 @@ class DataStream(IterableDataset):
             retry_delay (int, optional): delay in seconds before trying again. Defaults to 5.
         """
         download_start = time.time()
-        logging.info(f'Downloading tile {tile_nums}..')
+        print(f'Downloading tile {tile_nums}..')
         retries = 0
         while retries < max_retries:
             try:
@@ -528,19 +528,19 @@ class DataStream(IterableDataset):
                 ):
                     download_event.set()  # Signal that process is finished
                     self.download_success = True
-                    logging.info(
+                    print(
                         f'Successfully downloaded tile {tile_nums} in {np.round(time.time()-download_start, 2)} seconds.'
                     )
                     return
             except Exception as e:
-                logging.error(f'Error downloading tile {tile_nums}: {e}, attempt {retries+1}')
+                print(f'Error downloading tile {tile_nums}: {e}, attempt {retries+1}')
 
             retries += 1
             if retries < max_retries:
-                logging.info(f'Retrying download for tile {tile_nums}...')
+                print(f'Retrying download for tile {tile_nums}...')
                 time.sleep(retry_delay)
 
-        logging.error(f'Failed to download tile {tile_nums} after {max_retries} attempts.')
+        print(f'Failed to download tile {tile_nums} after {max_retries} attempts.')
         self.download_success = False
         download_event.set()  # Signal that process is finished
 
@@ -556,7 +556,7 @@ class DataStream(IterableDataset):
             catalog_event (threading.event): signals process completion
         """
         catalog_start = time.time()
-        logging.info(f'Reading catalog for tile {tile_nums}, adding labels to the catalog..')
+        print(f'Reading catalog for tile {tile_nums}, adding labels to the catalog..')
         try:
             avail_bands = ''.join(self.availability.get_availability(tile_nums)[0])
             obj_in_tile = read_unions_cat(self.unions_det_dir, tile_nums)
@@ -573,9 +573,9 @@ class DataStream(IterableDataset):
             else:
                 self.catalog_success = False
         except Exception as e:
-            logging.exception(f'Failed to process the object catalog for tile {tile_nums}: {e}.')
+            print(f'Failed to process the object catalog for tile {tile_nums}: {e}.')
             self.catalog_success = False
-        logging.info(
+        print(
             f'Finished processing catalog for tile {tile_nums} in: {np.round(time.time()-catalog_start)} seconds.'
         )
         # signal that catalog processing is finished
@@ -592,7 +592,7 @@ class DataStream(IterableDataset):
         """
         cutout_start = time.time()
         self.cutout_stack = None
-        logging.info(f'Cutting up tile {tile_nums}.')
+        print(f'Cutting up tile {tile_nums}.')
         try:
             self.cutout_stack = cutout_all_bands(
                 tile_nums,
@@ -602,13 +602,13 @@ class DataStream(IterableDataset):
                 self.cutout_size,
                 self.cutout_workers,
             )
-            logging.info(
+            print(
                 f'Finished cutting tile {tile_nums} in {np.round(time.time()-cutout_start, 2)} seconds.'
             )
             self.cutout_success = True
 
         except Exception as e:
-            logging.exception(f'Something went wrong in cutout generation: {e}')
+            print(f'Something went wrong in cutout generation: {e}')
             self.cutout_stack = None
             self.cutout_success = False
         finally:
@@ -640,17 +640,17 @@ class DataStream(IterableDataset):
                 self.prefetch_queue.put((self.cutout_stack, obj_catalog, tile_nums))
                 self.tiles_in_queue.append(tile_nums)  # track tiles in the queue
 
-            logging.info(
+            print(
                 f'Fetch start to finished data product in {np.round(time.time()-self.fetch_start, 2)} seconds.'
             )
         else:
-            logging.info(f'Failed creating cutouts for tile {tile_nums}.')
+            print(f'Failed creating cutouts for tile {tile_nums}.')
 
         tile_folder = os.path.join(
             self.download_dir, f'{str(tile_nums[0]).zfill(3)}_{str(tile_nums[1]).zfill(3)}'
         )
         if os.path.exists(tile_folder):
-            logging.info(f'Cutting done, deleting tile {tile_nums}.')
+            print(f'Cutting done, deleting tile {tile_nums}.')
             shutil.rmtree(tile_folder)
 
     def preload(self):
@@ -667,8 +667,8 @@ class DataStream(IterableDataset):
             time.sleep(0.5)
 
         with self.queue_lock:
-            logging.info(f'Queue is filled with {self.prefetch_queue.qsize()} items.')
-            logging.info(f'Tiles in queue: {list(self.tiles_in_queue)}.')
+            print(f'Queue is filled with {self.prefetch_queue.qsize()} items.')
+            print(f'Tiles in queue: {list(self.tiles_in_queue)}.')
 
         return True
 
@@ -693,10 +693,10 @@ class DataStream(IterableDataset):
         Returns:
             tuple: cutout stack, processed catalog, tile numbers
         """
-        logging.info('Pulling next tile.')
+        print('Pulling next tile.')
         with self.queue_lock:  # Thread lock the queue while accessing it
-            logging.info(f'Tiles in queue: {list(self.tiles_in_queue)}.')
-            logging.debug(f'Queue size: {self.prefetch_queue.qsize()}')
+            print(f'Tiles in queue: {list(self.tiles_in_queue)}.')
+            print(f'Queue size: {self.prefetch_queue.qsize()}')
             start_wait_time = time.time()
             while self.prefetch_queue.empty():
                 self.queue_lock.release()  # Release the lock while waiting
@@ -706,16 +706,16 @@ class DataStream(IterableDataset):
             # monitor downtime
             wait_time = time.time() - start_wait_time
             if wait_time > 10 ** (-3):
-                logging.warning(
+                print(
                     f'There was a {np.round(wait_time, 2)} second downtime. Adapt max queue length.'
                 )
             else:
-                logging.info('No downtime recorded when pulling next item from the queue.')
+                print('No downtime recorded when pulling next item from the queue.')
 
             cutout_stack, obj_catalog, tile_nums = self.prefetch_queue.get()
-            logging.info(f'Pulled tile {tile_nums} from the queue.')
+            print(f'Pulled tile {tile_nums} from the queue.')
             self.tiles_in_queue.popleft()
-            logging.debug(f'Tiles in queue after pull: {list(self.tiles_in_queue)}')
+            print(f'Tiles in queue after pull: {list(self.tiles_in_queue)}')
 
             return cutout_stack, obj_catalog, tile_nums
 
@@ -752,7 +752,7 @@ def main(
     print('#############', tile_info_dir)
     scrip_start = time.time()
 
-    setup_logging(log_dir, __file__, logging_level=logging.INFO)
+    ##setup_logging(log_dir, __file__, logging_level=logging.INFO)
 
     if update:
         update_available_tiles(tile_info_dir)
@@ -771,15 +771,15 @@ def main(
     # get the tiles to cut out from the unions catalogs
     _, tiles_x_bands = tiles_from_unions_catalogs(availability, unions_det_dir, band_constr)
 
-    logging.info('Downloading the tiles in the available bands..')
+    print('Downloading the tiles in the available bands..')
     for tile in tiles_x_bands:
         start_download = time.time()
         if download_tile_for_bands_parallel(availability, tile, in_dict, download_dir, dl_workers):
-            logging.info(
+            print(
                 f'Tile downloaded in all available bands. Took {np.round(time.time() - start_download, 2)} seconds.'
             )
         else:
-            logging.info(f'Tile {tile} failed to download.')
+            print(f'Tile {tile} failed to download.')
 
         avail_bands = ''.join(availability.get_availability(tile)[0])
         save_path = os.path.join(
@@ -803,12 +803,12 @@ def main(
 
             cutting_start = time.time()
             cutout = cutout_all_bands(tile, in_dict, download_dir, obj_in_tile, size, workers)
-            logging.info(
+            print(
                 f'Cutting finished. Took {np.round(time.time()-cutting_start, 2)} seconds.'
             )
-            logging.info(f'Start to cutouts done took {np.round(time.time()-scrip_start, 2)}')
+            print(f'Start to cutouts done took {np.round(time.time()-scrip_start, 2)}')
         else:
-            logging.info(f'No objects in tile {tile}.')
+            print(f'No objects in tile {tile}.')
             cutout = None
 
         # save_to_h5(
@@ -829,13 +829,13 @@ def main(
 
         tile_folder = os.path.join(download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
         if os.path.exists(tile_folder):
-            logging.info(f'Cutting done, deleting raw data from tile {tile}.')
+            print(f'Cutting done, deleting raw data from tile {tile}.')
             shutil.rmtree(tile_folder)
 
         # plot all cutouts or just a random one
         if with_plot:
             if plot_random_cutout:
-                logging.info(f'Plotting cutout of random object in tile: {tile}.')
+                print(f'Plotting cutout of random object in tile: {tile}.')
                 cutout_from_file = read_h5(save_path)
                 random_obj_index = np.random.randint(0, cutout_from_file['images'].shape[0])
                 # plot a random object from the stack of cutouts
@@ -894,6 +894,6 @@ if __name__ == '__main__':
         elapsed_string.split(':')[1],
         elapsed_string.split(':')[2],
     )
-    logging.info(
+    print(
         f'Done! Execution took {hours} hours, {minutes} minutes, and {np.round(float(seconds),2)} seconds.'
     )
