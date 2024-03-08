@@ -91,18 +91,18 @@ save_plot = True
 
 platform = 'cedar' # CANFAR
 if platform == 'CANFAR':
-    root_dir_main = '/arc/home/ashley/SSL/'
+    root_dir_main = '/arc/home/ashley/SSL/git/'
     root_dir_data = '/arc/projects/unions/'
     root_dir_downloads = '/arc/projects/unions/ssl/data/processed/unions-cutouts/ugriz_lsb/10k_per_h5/'
 else: # assume compute canada for now
-    root_dir_main = '/home/a4ferrei/scratch/'
+    root_dir_main = '/home/a4ferrei/scratch/github/'
     root_dir_data = '/home/a4ferrei/scratch/data/'
     root_dir_downloads = root_dir_data
 
 
 # paths
 # define the root directory
-main_directory = root_dir_main + 'git/TileSlicer/'
+main_directory = root_dir_main + 'TileSlicer/'
 data_directory = root_dir_data + 'ssl/data/'
 download_directory = root_dir_downloads + 'nick_cutouts/'
 table_directory = os.path.join(main_directory, 'tables/')
