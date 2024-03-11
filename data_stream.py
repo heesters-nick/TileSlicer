@@ -456,6 +456,8 @@ class DataStream(IterableDataset):
             tuple: tile numbers
         """
         print('in _determine_next_tile()')
+        print(self.current_tile_index)
+        print(len(self.tiles_x_bands))
         if self.current_tile_index >= len(self.tiles_x_bands):
             print('None')
             return None  # Indicates no more tiles left --> should not be doing this?
