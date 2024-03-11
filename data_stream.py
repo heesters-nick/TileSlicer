@@ -664,7 +664,8 @@ class DataStream(IterableDataset):
 
         # Wait until the queue is full
         while not self.prefetch_queue.full():
-            time.sleep(0.5)
+            #time.sleep(0.5)
+            pass
 
         with self.queue_lock:
             print(f'Queue is filled with {self.prefetch_queue.qsize()} items.')
