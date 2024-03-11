@@ -91,7 +91,7 @@ band_dict = {
 
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = False
+update_tiles = True
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -458,7 +458,7 @@ class DataStream(IterableDataset):
         print('in _determine_next_tile()')
         if self.current_tile_index >= len(self.tiles_x_bands):
             print('None')
-            return None  # Indicates no more tiles left
+            return None  # Indicates no more tiles left --> should not be doing this?
 
         print('out')
         tile_nums = self.tiles_x_bands[self.current_tile_index]
