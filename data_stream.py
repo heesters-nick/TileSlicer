@@ -455,11 +455,16 @@ class DataStream(IterableDataset):
         Returns:
             tuple: tile numbers
         """
+        print('in _determine_next_tile()')
         if self.current_tile_index >= len(self.tiles_x_bands):
+            print('None')
             return None  # Indicates no more tiles left
 
+        print('out')
         tile_nums = self.tiles_x_bands[self.current_tile_index]
+        print('tile_nums')
         self.current_tile_index += 1
+        print('current_tile_index')
         return tile_nums
 
     def _fetch_and_preprocess_tiles(self):
