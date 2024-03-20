@@ -5,7 +5,7 @@ from itertools import groupby
 
 from tqdm import tqdm
 
-from utils import create_master_cat_from_file, extract_numbers, update_h5_labels_parallel
+from data_utils import create_master_cat_from_file, extract_numbers, update_h5_labels_parallel
 
 # define the root directory
 main_directory = '/arc/home/heestersnick/tileslicer/'

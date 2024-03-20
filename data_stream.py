@@ -23,7 +23,7 @@ from tile_cutter import (
     download_tile_for_bands_parallel,
     tiles_from_unions_catalogs,
 )
-from utils import (
+from data_utils import (
     TileAvailability,
     add_labels,
     extract_tile_numbers,

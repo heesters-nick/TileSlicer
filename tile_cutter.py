@@ -21,7 +21,7 @@ from vos import Client
 
 from kd_tree import TileWCS, build_tree, query_tree, relate_coord_tile
 from plotting import plot_cutout
-from utils import (
+from data_utils import (
     TileAvailability,
     add_labels,
     extract_tile_numbers,
