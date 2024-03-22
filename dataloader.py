@@ -62,7 +62,7 @@ band_dict = {
 
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = False
+update_tiles = True
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -150,10 +150,10 @@ os.makedirs(log_directory, exist_ok=True)
 
 band_constraint = 5  # define the minimum number of bands that should be available for a tile
 cutout_size = 224
-number_objects = 2048*5 # bring back to 30k for the real deal
+number_objects = 30000 # bring back to 30k for the real deal
 num_cutout_workers = 5  # number of threads for cutout creation
 num_download_workers = 5  # number of threads for tile download
-queue_size = 1  # put back to 2 later # max queue size, keep as low as possible to not consume too much RAM
+queue_size = 3 # max queue size, keep as low as possible to not consume too much RAM
 ##logging_level = logging.INFO
 
 
