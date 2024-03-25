@@ -153,7 +153,7 @@ cutout_size = 224
 number_objects = 30000 # bring back to 30k for the real deal
 num_cutout_workers = 5  # number of threads for cutout creation
 num_download_workers = 5  # number of threads for tile download
-queue_size = 3 # max queue size, keep as low as possible to not consume too much RAM
+queue_size = 2 # max queue size, keep as low as possible to not consume too much RAM
 ##logging_level = logging.INFO
 
 
