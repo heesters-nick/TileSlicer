@@ -175,6 +175,7 @@ def run_training_step(item):
 
 def dataset_wrapper():
 
+    print(f'DWARF CSV HAS LEN {len(dwarf_catalog)}')
 
     ##setup_logging(log_directory, __file__, logging_level=logging.INFO)
     dataset = DataStream(
