@@ -127,7 +127,7 @@ dwarf_catalog = os.path.join(table_directory, 'all_known_dwarfs_processed.csv')
 processed_file = os.path.join(table_directory, 'processed.txt')
 # define catalog file
 catalog_file = 'all_known_dwarfs.csv'
-catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))
+catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file)) # not used?
 # define the keys for ra, dec, and id in the catalog
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
@@ -175,8 +175,6 @@ def run_training_step(item):
 
 def dataset_wrapper():
 
-    print(f'DWARF CSV HAS LEN {len(catalog_script)}')
-    print(catalog_script.head())
 
     ##setup_logging(log_directory, __file__, logging_level=logging.INFO)
     dataset = DataStream(
