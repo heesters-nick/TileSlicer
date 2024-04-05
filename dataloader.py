@@ -175,7 +175,10 @@ def run_training_step(item):
 
 def dataset_wrapper():
 
-    print(f'DWARF CSV HAS LEN {len(dwarf_catalog)}')
+    dwarf_catalog_df = pd.read_csv(dwarf_catalog)
+    lens_catalog_df = pd.read_csv(lens_catalog)
+    print(f'DWARF CSV HAS LEN {len(dwarf_catalog_df)}')
+    print(f'LENS CSV HAS LEN {len(lens_catalog_df)}')
 
     ##setup_logging(log_directory, __file__, logging_level=logging.INFO)
     dataset = DataStream(
