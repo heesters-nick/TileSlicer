@@ -124,19 +124,49 @@ def update_available_tiles(path, save=True):
         np.savetxt(path + 'wishes_z_tiles.txt', wishes_z_tiles, fmt='%s')
 
 
+def update_available_tiles_new(path, in_dict, save=True):
+    """
+    Update available tile lists from the VOSpace. Takes a few mins to run.
+
+    Args:
+        path (str): path to save tile lists.
+        in_dict (dict): band dictionary
+        save (bool): save new lists to disk, default is True.
+
+    Returns:
+        None
+    """
+
+    for band in np.array(list(in_dict.keys())):
+        vos_dir = in_dict[band]['vos']
+        band_filter = in_dict[band]['band']
+        suffix = in_dict[band]['suffix']
+
+        start_fetch = time.time()
+        logging.info(f'Retrieving {band_filter}-band tiles...')
+        band_tiles = client.glob1(vos_dir, f'*{suffix}')
+        end_fetch = time.time()
+        logging.info(
+            f'Retrieving {band_filter}-band tiles completed. Took {np.round((end_fetch-start_fetch)/60, 3)} minutes.'
+        )
+        if save:
+            np.savetxt(path + f'{band}_tiles.txt', band_tiles, fmt='%s')
+
+
 def load_available_tiles(path):
     """
     Load tile lists from disk.
     :param path: path to files
     :return: lists of available tiles for the five bands
     """
-    u_tiles = np.loadtxt(path + 'cfis_u_tiles.txt', dtype=str)
-    g_tiles = np.loadtxt(path + 'whigs_g_tiles.txt', dtype=str)
-    lsb_r_tiles = np.loadtxt(path + 'cfis_lsb_r_tiles.txt', dtype=str)
-    i_tiles = np.loadtxt(path + 'ps_i_tiles.txt', dtype=str)
-    z_tiles = np.loadtxt(path + 'wishes_z_tiles.txt', dtype=str)
+    u_tiles = np.loadtxt(path + 'cfis-u_tiles.txt', dtype=str)
+    g_tiles = np.loadtxt(path + 'whigs-g_tiles.txt', dtype=str)
+    lsb_r_tiles = np.loadtxt(path + 'cfis_lsb-r_tiles.txt', dtype=str)
+    i_tiles = np.loadtxt(path + 'ps-i_tiles.txt', dtype=str)
+    z_tiles = np.loadtxt(path + 'wishes-z_tiles.txt', dtype=str)
+    ps_z_tiles = np.loadtxt(path + 'ps-z_tiles.txt', dtype=str)
 
-    return u_tiles, g_tiles, lsb_r_tiles, i_tiles, z_tiles
+    return u_tiles, g_tiles, lsb_r_tiles, i_tiles, z_tiles, ps_z_tiles
 
 
 def get_tile_numbers(name):
@@ -163,8 +193,9 @@ def extract_tile_numbers(tile_lists):
     lsb_r_nums = np.array([get_tile_numbers(name) for name in tile_lists[2]])
     i_nums = np.array([get_tile_numbers(name) for name in tile_lists[3]])
     z_nums = np.array([get_tile_numbers(name) for name in tile_lists[4]])
+    ps_z_nums = np.array([get_tile_numbers(name) for name in tile_lists[5]])
 
-    return u_nums, g_nums, lsb_r_nums, i_nums, z_nums
+    return u_nums, g_nums, lsb_r_nums, i_nums, z_nums, ps_z_nums
 
 
 class TileAvailability:

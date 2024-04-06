@@ -3,7 +3,7 @@ import os
 import queue
 import shutil
 import socket
-import threading  # Or multiprocessing, if preferred
+import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed

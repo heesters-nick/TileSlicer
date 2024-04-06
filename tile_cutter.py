@@ -28,12 +28,12 @@ from utils import (
     get_numbers_from_folders,
     load_available_tiles,
     object_batch_generator,
-    read_dwarf_cat,
     read_h5,
     read_processed,
     read_unions_cat,
     save_tile_cat,
-    update_available_tiles,
+    setup_logging,
+    update_available_tiles_new,
     update_master_cat,
     update_processed,
 )
@@ -74,9 +74,9 @@ band_dict = {
         'zfill': 3,
     },
     'ps-i': {
-        'name': 'PS-DR3',
+        'name': 'DR4',
         'band': 'i',
-        'vos': 'vos:cfis/panstarrs/DR3/tiles/',
+        'vos': 'vos:cfis/panstarrs/DR4/resamp/',
         'suffix': '.i.fits',
         'delimiter': '.',
         'fits_ext': 0,
@@ -91,11 +91,20 @@ band_dict = {
         'fits_ext': 1,
         'zfill': 0,
     },
+    'ps-z': {
+        'name': 'DR4',
+        'band': 'ps-z',
+        'vos': 'vos:cfis/panstarrs/DR4/resamp/',
+        'suffix': '.z.fits',
+        'delimiter': '.',
+        'fits_ext': 0,
+        'zfill': 3,
+    },
 }
 
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = False
+update_tiles = True
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -166,14 +175,13 @@ os.makedirs(cutout_directory, exist_ok=True)
 figure_directory = os.path.join(main_directory, 'figures/')
 os.makedirs(figure_directory, exist_ok=True)
 # define where the logs should be saved
-log_dir = os.path.join(main_directory, 'logs/')
-os.makedirs(log_dir, exist_ok=True)
-
+log_directory = os.path.join(main_directory, 'logs/')
+os.makedirs(log_directory, exist_ok=True)
 # setup_logging(log_dir, __name__)
 
 ### tile parameters ###
 band_constraint = 3  # define the minimum number of bands that should be available for a tile
-tile_batch_size = 7  # number of tiles to process in parallel
+tile_batch_size = 5  # number of tiles to process in parallel
 object_batch_size = 5000  # number of objects to process at a time
 cutout_size = 224
 num_workers = 14  # specifiy the number of parallel workers following machine capabilities
@@ -609,12 +617,11 @@ def process_tile(
             cutout = None
     else:
         obj_in_tile = catalog.loc[catalog['tile'] == tile].reset_index(drop=True)
-        dwarfs_in_tile = read_dwarf_cat(dwarf_cat, tile)
         if os.path.exists(save_path):
             logging.info(f'Tile {tile} has already been processed.')
             return 0, len(obj_in_tile), len(obj_in_tile), True
 
-        obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat, lens_cat, tile)
+        obj_in_tile = add_labels(obj_in_tile, dwarf_cat, z_class_cat, lens_cat, tile)
         if obj_in_tile is None:
             logging.info(f'No objects cut out in tile {tile}.')
             return 0, 0, 0, 0
@@ -658,6 +665,7 @@ def process_tiles_in_batches(tile_list, batch_size):
 
 
 def main(
+    log_dir,
     cat_default,
     dwarf_cat,
     z_class_cat,
@@ -694,6 +702,8 @@ def main(
     show_plt=False,
     save_plt=False,
 ):
+    setup_logging(log_dir, __file__, logging_level=logging.INFO)
+
     # check if the coordinates are provided as a list of pairs of coordinates or as a DataFrame
     if coordinates is not None:
         coordinates = coordinates[0]
@@ -757,11 +767,11 @@ def main(
         )
     # update information on the currently available tiles
     if update:
-        update_available_tiles(tile_info_dir)
+        update_available_tiles_new(tile_info_dir, in_dict)
 
     # extract the tile numbers from the available tiles
-    u, g, lsb_r, i, z = extract_tile_numbers(load_available_tiles(tile_info_dir))
-    all_bands = [u, g, lsb_r, i, z]
+    u, g, lsb_r, i, z, ps_z = extract_tile_numbers(load_available_tiles(tile_info_dir))
+    all_bands = [u, g, lsb_r, i, z, ps_z]
     # create the tile availability object
     availability = TileAvailability(all_bands, in_dict, at_least_key)
     # build the kd tree
@@ -1005,6 +1015,7 @@ if __name__ == '__main__':
 
     # define the arguments for the main function
     arg_dict_main = {
+        'log_dir': log_directory,
         'cat_default': catalog_script,
         'dwarf_cat': dwarf_catalog,
         'z_class_cat': redshift_class_catalog,
