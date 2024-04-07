@@ -24,6 +24,7 @@ def plot_cutout(
         'cfis_lsb-r': 'CFHT-LSB-r',
         'ps-i': 'PS-i',
         'wishes-z': 'HSC-z',
+        'ps-z': 'PS-z',
     }
     shape = cutout['images'].shape
     if random_obj_index:

@@ -421,8 +421,8 @@ class DataStream(IterableDataset):
         if self.update_tiles:
             update_available_tiles(self.tile_info_dir)
         # Extract available tile numbers from file
-        u, g, lsb_r, i, z = extract_tile_numbers(load_available_tiles(self.tile_info_dir))
-        all_bands = [u, g, lsb_r, i, z]
+        u, g, lsb_r, i, z, ps_z = extract_tile_numbers(load_available_tiles(self.tile_info_dir))
+        all_bands = [u, g, lsb_r, i, z, ps_z]
         self.availability = TileAvailability(all_bands, self.in_dict, self.at_least_key)
 
         # Optionally show tile statistics
@@ -746,8 +746,8 @@ def main(
         update_available_tiles(tile_info_dir)
 
     # extract the tile numbers from the available tiles
-    u, g, lsb_r, i, z = extract_tile_numbers(load_available_tiles(tile_info_dir))
-    all_bands = [u, g, lsb_r, i, z]
+    u, g, lsb_r, i, z, ps_z = extract_tile_numbers(load_available_tiles(tile_info_dir))
+    all_bands = [u, g, lsb_r, i, z, ps_z]
     # create the tile availability object
     availability = TileAvailability(all_bands, in_dict, at_least_key)
     # build the kd tree
