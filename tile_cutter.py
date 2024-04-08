@@ -618,12 +618,12 @@ def process_tile(
             cutout = None
     else:
         obj_in_tile = catalog.loc[catalog['tile'] == tile].reset_index(drop=True)
-        dwarfs_in_tile = read_dwarf_cat(dwarf_cat, tile)
+        #dwarfs_in_tile = read_dwarf_cat(dwarf_cat, tile)
         if os.path.exists(save_path):
             logging.info(f'Tile {tile} has already been processed.')
             return 0, len(obj_in_tile), len(obj_in_tile), True
 
-        obj_in_tile = add_labels(obj_in_tile, dwarfs_in_tile, z_class_cat, lens_cat, tile)
+        obj_in_tile = add_labels(obj_in_tile, z_class_cat, lens_cat, tile)
         if obj_in_tile is None:
             logging.info(f'No objects cut out in tile {tile}.')
             return 0, 0, 0, 0
