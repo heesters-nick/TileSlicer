@@ -41,9 +41,9 @@ band_dict = {
         'zfill': 3,
     },
     'ps-i': {
-        'name': 'PS-DR3',
+        'name': 'DR4',
         'band': 'i',
-        'vos': 'vos:cfis/panstarrs/DR3/tiles/',
+        'vos': 'vos:cfis/panstarrs/DR4/resamp/',
         'suffix': '.i.fits',
         'delimiter': '.',
         'fits_ext': 0,
@@ -58,7 +58,21 @@ band_dict = {
         'fits_ext': 1,
         'zfill': 0,
     },
+    'ps-z': {
+        'name': 'DR4',
+        'band': 'ps-z',
+        'vos': 'vos:cfis/panstarrs/DR4/resamp/',
+        'suffix': '.z.fits',
+        'delimiter': '.',
+        'fits_ext': 0,
+        'zfill': 3,
+    },
 }
+
+# define the bands to consider
+considered_bands = ['cfis-u', 'whigs-g', 'cfis_lsb-r', 'ps-i', 'wishes-z']
+# create a dictionary with the bands to consider
+band_dict_incl = {key: band_dict.get(key) for key in considered_bands}
 
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
@@ -230,7 +244,7 @@ if __name__ == '__main__':
         unions_detection_directory,
         band_constraint,
         download_directory,
-        band_dict,
+        band_dict_incl,
         cutout_size,
         at_least,
         dwarf_catalog,
