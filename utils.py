@@ -73,58 +73,7 @@ def tile_coordinates(name):
     return ra, dec
 
 
-def update_available_tiles(path, save=True):
-    """
-    Update available tile lists from the VOSpace. Takes a few mins to run.
-
-    Args:
-        path (str): path to save tile lists.
-        save (bool): save new lists to disk, default is True.
-
-    Returns:
-        None
-    """
-    logging.info('Updating available tile lists from the VOSpace.')
-    logging.info('Retrieving u-band tiles...')
-    start_u = time.time()
-    cfis_u_tiles = client.glob1('vos:cfis/tiles_DR5/', '*u.fits')
-    end_u = time.time()
-    logging.info(
-        f'Retrieving u-band tiles completed. Took {np.round((end_u-start_u)/60, 3)} minutes.'
-    )
-    logging.info('Retrieving g-band tiles...')
-    whigs_g_tiles = client.glob1('vos:cfis/whigs/stack_images_CFIS_scheme/', '*.fits')
-    end_g = time.time()
-    logging.info(
-        f'Retrieving g-band tiles completed. Took {np.round((end_g-end_u)/60, 3)} minutes.'
-    )
-    logging.info('Retrieving r-band tiles...')
-    cfis_lsb_r_tiles = client.glob1('vos:cfis/tiles_LSB_DR5/', '*.fits')
-    end_r = time.time()
-    logging.info(
-        f'Retrieving r-band tiles completed. Took {np.round((end_r-end_g)/60, 3)} minutes.'
-    )
-    logging.info('Retrieving i-band tiles...')
-    ps_i_tiles = client.glob1('vos:cfis/panstarrs/DR3/tiles/', '*i.fits')
-    end_i = time.time()
-    logging.info(
-        f'Retrieving i-band tiles completed. Took {np.round((end_i-end_r)/60, 3)} minutes.'
-    )
-    logging.info('Retrieving z-band tiles...')
-    wishes_z_tiles = client.glob1('vos:cfis/wishes_1/coadd/', '*.fits')
-    end_z = time.time()
-    logging.info(
-        f'Retrieving z-band tiles completed. Took {np.round((end_z-end_i)/60, 3)} minutes.'
-    )
-    if save:
-        np.savetxt(path + 'cfis_u_tiles.txt', cfis_u_tiles, fmt='%s')
-        np.savetxt(path + 'whigs_g_tiles.txt', whigs_g_tiles, fmt='%s')
-        np.savetxt(path + 'cfis_lsb_r_tiles.txt', cfis_lsb_r_tiles, fmt='%s')
-        np.savetxt(path + 'ps_i_tiles.txt', ps_i_tiles, fmt='%s')
-        np.savetxt(path + 'wishes_z_tiles.txt', wishes_z_tiles, fmt='%s')
-
-
-def update_available_tiles_new(path, in_dict, save=True):
+def update_available_tiles(path, in_dict, save=True):
     """
     Update available tile lists from the VOSpace. Takes a few mins to run.
 
@@ -153,20 +102,23 @@ def update_available_tiles_new(path, in_dict, save=True):
             np.savetxt(path + f'{band}_tiles.txt', band_tiles, fmt='%s')
 
 
-def load_available_tiles(path):
+def load_available_tiles(path, in_dict):
     """
     Load tile lists from disk.
-    :param path: path to files
-    :return: lists of available tiles for the five bands
-    """
-    u_tiles = np.loadtxt(path + 'cfis-u_tiles.txt', dtype=str)
-    g_tiles = np.loadtxt(path + 'whigs-g_tiles.txt', dtype=str)
-    lsb_r_tiles = np.loadtxt(path + 'cfis_lsb-r_tiles.txt', dtype=str)
-    i_tiles = np.loadtxt(path + 'ps-i_tiles.txt', dtype=str)
-    z_tiles = np.loadtxt(path + 'wishes-z_tiles.txt', dtype=str)
-    ps_z_tiles = np.loadtxt(path + 'ps-z_tiles.txt', dtype=str)
+    Args:
+        path (str): path to files
+        in_dict (dict): band dictionary
 
-    return u_tiles, g_tiles, lsb_r_tiles, i_tiles, z_tiles, ps_z_tiles
+    Returns:
+        dictionary of available tiles for the selected bands
+    """
+
+    band_tiles = {}
+    for band in np.array(list(in_dict.keys())):
+        tiles = np.loadtxt(path + f'{band}_tiles.txt', dtype=str)
+        band_tiles[band] = tiles
+
+    return band_tiles
 
 
 def get_tile_numbers(name):
@@ -182,30 +134,33 @@ def get_tile_numbers(name):
     return xxx, yyy
 
 
-def extract_tile_numbers(tile_lists):
+def extract_tile_numbers(tile_dict, in_dict):
     """
     Extract tile numbers from .fits file names.
-    :param tile_lists: lists of file names from the different bands
-    :return: lists of tile numbers available in the different bands
-    """
-    u_nums = np.array([get_tile_numbers(name) for name in tile_lists[0]])
-    g_nums = np.array([get_tile_numbers(name) for name in tile_lists[1]])
-    lsb_r_nums = np.array([get_tile_numbers(name) for name in tile_lists[2]])
-    i_nums = np.array([get_tile_numbers(name) for name in tile_lists[3]])
-    z_nums = np.array([get_tile_numbers(name) for name in tile_lists[4]])
-    ps_z_nums = np.array([get_tile_numbers(name) for name in tile_lists[5]])
 
-    return u_nums, g_nums, lsb_r_nums, i_nums, z_nums, ps_z_nums
+    Args:
+        tile_dict: lists of file names from the different bands
+        in_dict: band dictionary
+
+    Returns:
+        num_lists (list): list of lists containing available tile numbers in the different bands
+    """
+
+    num_lists = []
+    for band in np.array(list(in_dict.keys())):
+        num_lists.append(np.array([get_tile_numbers(name) for name in tile_dict[band]]))
+
+    return num_lists
 
 
 class TileAvailability:
-    def __init__(self, tile_nums, band_dict, at_least=False, band=None):
+    def __init__(self, tile_nums, in_dict, at_least=False, band=None):
         self.all_tiles = tile_nums
         self.tile_num_sets = [set(map(tuple, tile_array)) for tile_array in self.all_tiles]
         self.unique_tiles = sorted(set.union(*self.tile_num_sets))
         self.availability_matrix = self._create_availability_matrix()
         self.counts = self._calculate_counts(at_least)
-        self.band_dict = band_dict
+        self.band_dict = in_dict
 
     def _create_availability_matrix(self):
         array_shape = (len(self.unique_tiles), len(self.all_tiles))
@@ -235,7 +190,7 @@ class TileAvailability:
         try:
             index = self.unique_tiles.index(tuple(tile_nums))
         except ValueError:
-            # print(f'Tile number {tile_number} not available in any band.')
+            logging.warning(f'Tile number {tile_nums} not available in any band.')
             return [], []
         except TypeError:
             return [], []

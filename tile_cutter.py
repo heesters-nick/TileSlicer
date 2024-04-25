@@ -33,7 +33,7 @@ from utils import (
     read_unions_cat,
     save_tile_cat,
     setup_logging,
-    update_available_tiles_new,
+    update_available_tiles,
     update_master_cat,
     update_processed,
 )
@@ -102,6 +102,10 @@ band_dict = {
     },
 }
 
+# define the bands to consider
+considered_bands = ['cfis-u', 'whigs-g', 'cfis_lsb-r', 'ps-i', 'wishes-z']
+# create a dictionary with the bands to consider
+band_dict_incl = {key: band_dict.get(key) for key in considered_bands}
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
 update_tiles = True
@@ -270,7 +274,7 @@ def download_tile_for_bands(availability, tile_numbers, in_dict, download_dir, m
     """
     avail_idx = availability.get_availability(tile_numbers)[1]
     tile_dir = download_dir + f'{str(tile_numbers[0]).zfill(3)}_{str(tile_numbers[1]).zfill(3)}'
-    for band in np.array(list(band_dict.keys()))[avail_idx]:
+    for band in np.array(list(in_dict.keys()))[avail_idx]:
         vos_dir = in_dict[band]['vos']
         prefix = in_dict[band]['name']
         suffix = in_dict[band]['suffix']
@@ -348,7 +352,7 @@ def download_tile_for_bands_parallel(availability, tile_nums, in_dict, download_
     with ThreadPoolExecutor(max_workers=workers) as executor:
         # Create a list of futures for concurrent downloads
         futures = []
-        for band in np.array(list(band_dict.keys()))[avail_idx]:
+        for band in np.array(list(in_dict.keys()))[avail_idx]:
             vos_dir = in_dict[band]['vos']
             prefix = in_dict[band]['name']
             suffix = in_dict[band]['suffix']
@@ -767,11 +771,10 @@ def main(
         )
     # update information on the currently available tiles
     if update:
-        update_available_tiles_new(tile_info_dir, in_dict)
+        update_available_tiles(tile_info_dir, in_dict)
 
     # extract the tile numbers from the available tiles
-    u, g, lsb_r, i, z, ps_z = extract_tile_numbers(load_available_tiles(tile_info_dir))
-    all_bands = [u, g, lsb_r, i, z, ps_z]
+    all_bands = extract_tile_numbers(load_available_tiles(tile_info_dir, in_dict), in_dict)
     # create the tile availability object
     availability = TileAvailability(all_bands, in_dict, at_least_key)
     # build the kd tree
@@ -1026,7 +1029,7 @@ if __name__ == '__main__':
         'dec_key_default': dec_key_script,
         'id_key_default': id_key_script,
         'tile_info_dir': tile_info_directory,
-        'in_dict': band_dict,
+        'in_dict': band_dict_incl,
         'comb_w_band': combinations_with_band,
         'at_least_key': at_least,
         'band_constr': band_constraint,
