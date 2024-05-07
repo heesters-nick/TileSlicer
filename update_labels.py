@@ -21,7 +21,7 @@ unions_detection_directory = os.path.join(
 )
 # define the path to the catalog containing redshifts and classes
 redshift_class_catalog = os.path.join(
-    unions_table_directory, 'redshifts/redshifts-2024-01-04.parquet'
+    unions_table_directory, 'redshifts/redshifts-2024-05-07.parquet'
 )
 # define where the cutouts are saved
 cutout_directory = os.path.join(data_directory, 'processed/unions-cutouts/cutouts2024/')

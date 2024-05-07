@@ -10,6 +10,7 @@ notebooks/.ipynb_checkpoints/
 .idea/
 ruff.toml
 tables/redshifts-2024-01-04.parquet
+tables/redshifts-2024-05-07.parquet
 tables/unions/
 tables/redshifts
 tables/cutout_cat_master.parquet
