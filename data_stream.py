@@ -70,9 +70,9 @@ band_dict = {
         'zfill': 3,
     },
     'ps-i': {
-        'name': 'DR4',
+        'name': 'PS-DR3',
         'band': 'i',
-        'vos': 'vos:cfis/panstarrs/DR4/resamp/',
+        'vos': 'vos:cfis/panstarrs/DR3/tiles/',
         'suffix': '.i.fits',
         'delimiter': '.',
         'fits_ext': 0,

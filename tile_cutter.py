@@ -74,9 +74,9 @@ band_dict = {
         'zfill': 3,
     },
     'ps-i': {
-        'name': 'DR4',
+        'name': 'PS-DR3',
         'band': 'i',
-        'vos': 'vos:cfis/panstarrs/DR4/resamp/',
+        'vos': 'vos:cfis/panstarrs/DR3/tiles/',
         'suffix': '.i.fits',
         'delimiter': '.',
         'fits_ext': 0,
@@ -108,7 +108,7 @@ considered_bands = ['cfis-u', 'whigs-g', 'cfis_lsb-r', 'ps-i', 'wishes-z']
 band_dict_incl = {key: band_dict.get(key) for key in considered_bands}
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = True
+update_tiles = False
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -127,7 +127,7 @@ with_unions_catalogs = False
 # download the tiles
 download_tiles = True
 # Plot cutouts from one of the tiles after execution
-with_plot = False
+with_plot = True
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
 plot_random_cutout = False
 # Show plot
@@ -161,7 +161,7 @@ dwarf_catalog = os.path.join(table_directory, 'all_known_dwarfs_processed.csv')
 processed_file = os.path.join(table_directory, 'processed.txt')
 # define catalog file
 catalog_file = 'all_known_dwarfs.csv'
-catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))
+catalog_script = os.path.join(table_directory, catalog_file)
 # define the keys for ra, dec, and id in the catalog
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
@@ -565,7 +565,7 @@ def process_tile(
             obj_in_tile = add_labels(obj_in_tile, dwarf_cat, z_class_cat, lens_cat, tile)
         else:
             logging.info(f'No objects cut out in tile {tile}.')
-            return 0, 0, 0, 0
+            return 0, 0, 0, 0, None
 
         # count total number of cutouts created for this tile
         n_cutouts, n_already_cutout, n_batches_processed = 0, 0, 0
@@ -623,12 +623,13 @@ def process_tile(
         obj_in_tile = catalog.loc[catalog['tile'] == tile].reset_index(drop=True)
         if os.path.exists(save_path):
             logging.info(f'Tile {tile} has already been processed.')
-            return 0, len(obj_in_tile), len(obj_in_tile), True
+            return 0, len(obj_in_tile), len(obj_in_tile), True, obj_in_tile
 
         obj_in_tile = add_labels(obj_in_tile, dwarf_cat, z_class_cat, lens_cat, tile)
+
         if obj_in_tile is None:
             logging.info(f'No objects cut out in tile {tile}.')
-            return 0, 0, 0, 0
+            return 0, 0, 0, 0, None
 
         cutout = make_cutouts_all_bands(
             availability, tile, obj_in_tile, download_dir, in_dict, size
@@ -660,7 +661,7 @@ def process_tile(
             # save catalog to temporary file
             save_tile_cat(table_dir, tile, obj_in_tile)
 
-    return n_cutouts, n_already_cutout, len(obj_in_tile), all_already_processed
+    return n_cutouts, n_already_cutout, len(obj_in_tile), all_already_processed, obj_in_tile
 
 
 def process_tiles_in_batches(tile_list, batch_size):
@@ -763,7 +764,7 @@ def main(
         logging.info(
             'No coordinates or DataFrame provided. Using coordinates from default DataFrame.'
         )
-        catalog = cat_default
+        catalog = pd.read_csv(cat_default)
         catalog_name = os.path.basename(cat_default).split('.')[0]
         ra_key, dec_key, id_key = ra_key_default, dec_key_default, id_key_default
         coord_c = SkyCoord(
@@ -808,10 +809,13 @@ def main(
         f'Number of detected objects in the footprint that meet the band constraint: '
         f'{len(catalog.loc[catalog.n_bands >= band_constr])}/{len(catalog)}'
     )
-    # log the number of dwarfs available in 5, 4, 3, 2, 1 bands
-    logging.info(
-        f'Number of objects in the footprint that are available in\n5 bands: {len(catalog.loc[catalog.n_bands == 5])}\n4 bands: {len(catalog.loc[catalog.n_bands == 4])}\n3 bands: {len(catalog.loc[catalog.n_bands == 3])}\n2 bands: {len(catalog.loc[catalog.n_bands == 2])}\n1 band: {len(catalog.loc[catalog.n_bands == 1])}'
-    )
+    # log the number of dwarfs available in x, x-1, ... ,1 bands
+    availability_message = 'Number of objects in the footprint that are available in\n'
+    # Loop from max bands to 1 band
+    for i in range(len(in_dict), 0, -1):
+        count = len(catalog.loc[catalog['n_bands'] == i])
+        availability_message += f'{i} band{"s" if i > 1 else ""}: {count}\n'
+    logging.info(availability_message)
     if 'cutout' not in catalog.columns:
         # initialize a column of zeros for the cutout column
         catalog['cutout'] = 0
@@ -854,7 +858,9 @@ def main(
                     continue
 
                 start_download = time.time()
-                if download_tile_for_bands_parallel(availability, tile, in_dict, download_dir):
+                if download_tile_for_bands_parallel(
+                    availability, tile, in_dict, download_dir, workers=len(in_dict)
+                ):
                     logging.info(
                         f'Tile downloaded in all available bands. Took {np.round((time.time() - start_download), 2)} seconds.'
                     )
@@ -865,8 +871,9 @@ def main(
         successful_tiles_count = 0
         total_cutouts_count = 0
         failed_tiles = []
+        complete_processed_cat = None
         # initialize the result variables
-        result = 0, 0, 0, True
+        result = 0, 0, 0, True, None
 
         # process the tiles in parallel
         with ProcessPoolExecutor() as executor:
@@ -909,6 +916,12 @@ def main(
                         logging.error(
                             f'Something went wrong in tile {tile}! Only {result[0]+result[1]}/{result[2]} objects were cut out.'
                         )
+                    if complete_processed_cat is None:
+                        complete_processed_cat = result[4]
+                    else:
+                        complete_processed_cat = pd.concat(
+                            [complete_processed_cat, result[4]], ignore_index=True
+                        )
 
                 except Exception as e:
                     logging.exception(f'Failed to process tile {tile}: {str(e)}')
@@ -945,6 +958,12 @@ def main(
         if not catalog.empty:
             catalog.to_csv(
                 os.path.join(table_dir, catalog_name + '_processed.csv'),
+                index=False,
+            )
+
+        if complete_processed_cat is not None:
+            complete_processed_cat.to_csv(
+                os.path.join(table_dir, catalog_name + '_processed_complete.csv'),
                 index=False,
             )
         # plot all cutouts or just a random one
