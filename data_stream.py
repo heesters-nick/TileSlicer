@@ -1,6 +1,8 @@
+import ast
 import logging
 import os
 import queue
+import random
 import shutil
 import socket
 import threading
@@ -29,6 +31,7 @@ from utils import (
     extract_tile_numbers,
     load_available_tiles,
     read_h5,
+    read_processed,
     read_unions_cat,
     setup_logging,
     update_available_tiles,
@@ -184,7 +187,8 @@ band_constraint = 5  # define the minimum number of bands that should be availab
 cutout_size = 224  # square cutout size in pixels
 num_cutout_workers = 5  # specifiy the number of threads for cutout creation
 num_download_workers = 5  # specifiy the number of threads for tile download
-number_objects = 30000
+number_objects = 30000  # give number of objects per tile that should be processed or say 'all'
+exclude_processed_tiles = False  # exclude already processed tiles from training
 
 
 # @nb.njit(nb.float32[:, :](nb.float32[:, :], nb.int32, nb.int32, nb.int32, nb.float32[:, :]))
@@ -396,6 +400,8 @@ class DataStream(IterableDataset):
         cutout_workers,
         download_workers,
         queue_size,
+        processed,
+        exclude_processed,
     ):
         self.update_tiles = update_tiles
         self.tile_info_dir = tile_info_dir
@@ -414,6 +420,8 @@ class DataStream(IterableDataset):
         self.download_workers = download_workers
         self.queue_size = queue_size
         self.tiles_in_queue = deque()
+        self.processed = processed
+        self.exclude_processed = exclude_processed
 
         # maxsize determines how long the queue should be
         self.prefetch_queue = queue.Queue(maxsize=self.queue_size)
@@ -448,6 +456,18 @@ class DataStream(IterableDataset):
         _, self.tiles_x_bands = tiles_from_unions_catalogs(
             self.availability, self.unions_det_dir, self.band_constr
         )
+        # self.tiles_x_bands = self.tiles_x_bands[:10]
+        # Randomly shuffle the tile list to randomize the processing order
+        random.shuffle(self.tiles_x_bands)
+
+        # Check what tiles have already been processed and exclude them from the list
+        processed_tiles = read_processed(self.processed)
+        processed_tiles = {ast.literal_eval(s) for s in processed_tiles}
+        logging.info(f'Processed tiles: {processed_tiles}')
+        # Uncomment if processed tiles should be excluded
+        if self.exclude_processed:
+            self.tiles_x_bands = list(set(self.tiles_x_bands) - processed_tiles)
+
         logging.info('Finished initializing tiles.')
         # Initialize tile index (for tracking which tile to process next)
         self.current_tile_index = 0
@@ -571,7 +591,9 @@ class DataStream(IterableDataset):
                     obj_in_tile, self.dwarf_cat, self.z_class_cat, self.lens_cat, tile_nums
                 )
                 # control the max number of objects that should be cut out
-                obj_in_tile = obj_in_tile[: self.num_objects].reset_index(drop=True)
+                if self.num_objects != 'all':
+                    obj_in_tile = obj_in_tile[: self.num_objects].reset_index(drop=True)
+                logging.info(f'There are {len(obj_in_tile)} objects in the tile.')
                 self.processed_catalog = obj_in_tile
                 self.catalog_success = True
             else:
@@ -609,6 +631,7 @@ class DataStream(IterableDataset):
             logging.info(
                 f'Finished cutting tile {tile_nums} in {np.round(time.time()-cutout_start, 2)} seconds.'
             )
+            logging.info(f'Cut out {len(obj_catalog)} objects.')
             self.cutout_success = True
 
         except Exception as e:
@@ -730,6 +753,7 @@ def main(
     lens_cat,
     cat_master,
     processed,
+    exclude_processed,
     tile_info_dir,
     in_dict,
     comb_w_band,
@@ -862,6 +886,7 @@ if __name__ == '__main__':
         'lens_cat': lens_catalog,
         'cat_master': catalog_master,
         'processed': processed_file,
+        'exclude_processed': exclude_processed_tiles,
         'tile_info_dir': tile_info_directory,
         'in_dict': band_dict_incl,
         'comb_w_band': combinations_with_band,

@@ -8,7 +8,7 @@ import pandas as pd
 from vos import Client
 
 from data_stream import DataStream
-from utils import setup_logging
+from utils import setup_logging, update_processed
 
 client = Client()
 
@@ -76,7 +76,7 @@ band_dict_incl = {key: band_dict.get(key) for key in considered_bands}
 
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = True
+update_tiles = False
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -95,7 +95,7 @@ with_unions_catalogs = False
 # download the tiles
 download_tiles = True
 # Plot cutouts from one of the tiles after execution
-with_plot = True
+with_plot = False
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
 plot_random_cutout = True
 # Show plot
@@ -127,6 +127,10 @@ catalog_master = os.path.join(table_directory, 'cutout_cat_master.parquet')
 dwarf_catalog = os.path.join(table_directory, 'all_known_dwarfs_processed.csv')
 # define path to file containing the processed h5 files
 processed_file = os.path.join(table_directory, 'processed.txt')
+# create empty file if it does not already exist
+if not os.path.exists(processed_file):
+    with open(processed_file, 'w') as file:
+        file.write('')
 # define catalog file
 catalog_file = 'all_known_dwarfs.csv'
 catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))
@@ -152,11 +156,12 @@ os.makedirs(log_directory, exist_ok=True)
 
 band_constraint = 5  # define the minimum number of bands that should be available for a tile
 cutout_size = 224
-number_objects = 30000
+number_objects = 10000  # give number of objects per tile that should be processed or say 'all'
 num_cutout_workers = 5  # number of threads for cutout creation
 num_download_workers = 5  # number of threads for tile download
 queue_size = 2  # max queue size, keep as low as possible to not consume too much RAM
 logging_level = logging.INFO
+exclude_processed_tiles = False  # exclude already processed tiles from training
 
 
 def simulated_training_step(item):
@@ -194,6 +199,8 @@ def main(
     cutout_workers,
     download_workers,
     queue_size,
+    processed,
+    exclude_processed,
     log_dir,
     log_level,
 ):
@@ -216,6 +223,8 @@ def main(
         cutout_workers,
         download_workers,
         queue_size,
+        processed,
+        exclude_processed,
     )  # Initialize dataset
 
     num_iterations = 6  # How many training steps should be simulated
@@ -227,6 +236,7 @@ def main(
                 cutouts, catalog, tile = dataset.__next__()  # pull out the an item for training
                 logging.debug(f'Got tile {tile}.')
                 simulated_training_step((cutouts, catalog, tile))
+                update_processed(str(tile), processed)
                 del cutouts  # cleanup
                 del catalog
                 del tile
@@ -255,6 +265,8 @@ if __name__ == '__main__':
         num_cutout_workers,
         num_download_workers,
         queue_size,
+        processed_file,
+        exclude_processed_tiles,
         log_directory,
         logging_level,
     )
