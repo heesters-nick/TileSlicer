@@ -26,7 +26,7 @@ def build_tree(tiles, tile_info_dir, save=True):
     pass
 
 
-def query_tree(tiles, coords, tile_info_dir):
+def query_tree(tiles, coords, tile_info_dir, verbose=False):
     """
     Query the kd tree to find what tile an object is in.
     :param tiles: list of tile numbers as tuples
@@ -39,7 +39,8 @@ def query_tree(tiles, coords, tile_info_dir):
         tile_name, dist = find_tile(loaded_tree, tiles, coords)
         return tile_name
     except ValueError as e:
-        logging.error(e)
+        if verbose:
+            logging.warning(e)
         return None
 
 
@@ -85,4 +86,4 @@ def find_tile(tree, tiles, object_coord):
         wcs.set_coords(relate_coord_tile(nums=tiles[idx]))
         if wcs.wcs_tile.footprint_contains(coord_c):
             return tiles[idx], dist
-    raise ValueError('Object could not be assigned to a tile.')
+    raise ValueError(f'Object {object_coord} could not be assigned to a tile.')

@@ -456,15 +456,13 @@ class DataStream(IterableDataset):
         _, self.tiles_x_bands = tiles_from_unions_catalogs(
             self.availability, self.unions_det_dir, self.band_constr
         )
-        # self.tiles_x_bands = self.tiles_x_bands[:10]
         # Randomly shuffle the tile list to randomize the processing order
         random.shuffle(self.tiles_x_bands)
-
         # Check what tiles have already been processed and exclude them from the list
         processed_tiles = read_processed(self.processed)
         processed_tiles = {ast.literal_eval(s) for s in processed_tiles}
         logging.info(f'Processed tiles: {processed_tiles}')
-        # Uncomment if processed tiles should be excluded
+        # Exclude tiles that have already been processed from the list
         if self.exclude_processed:
             self.tiles_x_bands = list(set(self.tiles_x_bands) - processed_tiles)
 
@@ -484,6 +482,7 @@ class DataStream(IterableDataset):
 
         tile_nums = self.tiles_x_bands[self.current_tile_index]
         self.current_tile_index += 1
+
         return tile_nums
 
     def _fetch_and_preprocess_tiles(self):

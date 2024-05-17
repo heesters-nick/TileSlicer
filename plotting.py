@@ -1,4 +1,6 @@
+import logging
 import os
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,6 +20,14 @@ def plot_cutout(
     :param save_plot: save plot
     :return: cutout plot
     """
+
+    def local_warn_handler(message, category, filename, lineno, file=None, line=None):
+        # Custom message with context about the image
+        log = (
+            f'Warning in tile {cutout['tile']}: {filename}:{lineno}: {category.__name__}: {message}'
+        )
+        logging.warning(log)  # Log the warning with contextual info
+
     title_map = {
         'cfis-u': 'CFHT-u',
         'whigs-g': 'HSC-g',
@@ -48,10 +58,17 @@ def plot_cutout(
             # Get the image data for the current object and filter band
             image = image_data[i, j]
             # Display the image
-            image[image < -10] = np.nan
+            epsilon = 1e-10
+            image[image == 0.0] = epsilon
+            image[image == 0] = epsilon
+            image[image < -10] = epsilon
             image[image > 1300] = np.nanmax(image)
-            norm = simple_norm(image, 'sqrt', percent=98.0)
-            image[np.isnan(image)] = 0.0
+            image = np.nan_to_num(image, nan=epsilon, posinf=epsilon, neginf=epsilon)
+            try:
+                norm = simple_norm(image, 'sqrt', percent=98.0)
+            finally:
+                warnings.showwarning = local_warn_handler
+            # image[np.isnan(image)] = 0.0
             ax.imshow(image, norm=norm, cmap='viridis', origin='lower')
             if i == 0:
                 ax.set_title(f'{title_map[band]}', fontsize=45, fontweight='bold')

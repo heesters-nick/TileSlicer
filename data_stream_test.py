@@ -161,7 +161,7 @@ num_cutout_workers = 5  # number of threads for cutout creation
 num_download_workers = 5  # number of threads for tile download
 queue_size = 2  # max queue size, keep as low as possible to not consume too much RAM
 logging_level = logging.INFO
-exclude_processed_tiles = False  # exclude already processed tiles from training
+exclude_processed_tiles = True  # exclude already processed tiles from training
 
 
 def simulated_training_step(item):

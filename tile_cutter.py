@@ -3,7 +3,6 @@ import concurrent.futures
 import glob
 import logging
 import os
-import re
 import shutil
 import subprocess
 import time
@@ -184,11 +183,11 @@ os.makedirs(log_directory, exist_ok=True)
 # setup_logging(log_dir, __name__)
 
 ### tile parameters ###
-band_constraint = 3  # define the minimum number of bands that should be available for a tile
+band_constraint = 5  # define the minimum number of bands that should be available for a tile
 tile_batch_size = 5  # number of tiles to process in parallel
 object_batch_size = 5000  # number of objects to process at a time
 cutout_size = 224
-num_workers = 14  # specifiy the number of parallel workers following machine capabilities
+num_workers = 5  # specifiy the number of parallel workers following machine capabilities
 
 
 def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):
@@ -830,6 +829,9 @@ def main(
     total_batches = len(tiles_x_bands) // batch_size + (
         1 if len(tiles_x_bands) % batch_size != 0 else 0
     )
+    # initialize detailed catalog of processed objects
+    complete_processed_cat = None
+
     for tile_idx, tile_batch in enumerate(
         process_tiles_in_batches(tiles_x_bands, batch_size), start=1
     ):
@@ -840,20 +842,22 @@ def main(
         if dl_tiles:
             logging.info('Downloading the tiles in the available bands..')
             for tile in tile_batch:
+                avail_bands = ''.join(availability.get_availability(tile)[0])
                 # check if there is already a .h5 file with tile in its name
-                tile_pattern = re.compile(rf'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
-                set_processed = read_processed(processed)
-                if any(tile_pattern.search(file_name) for file_name in set_processed):
-                    # if (
-                    #     len(
-                    #         glob.glob(
-                    #             os.path.join(
-                    #                 cutout_dir, f'*{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}*.h5'
-                    #             )
-                    #         )
-                    #     )
-                    #     != 0
-                    # ):
+                # tile_pattern = re.compile(rf'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
+                # set_processed = read_processed(processed)
+                # if any(tile_pattern.search(file_name) for file_name in set_processed):
+                if (
+                    len(
+                        glob.glob(
+                            os.path.join(
+                                cutout_dir,
+                                f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}_{size}x{size}_{avail_bands}.h5',
+                            )
+                        )
+                    )
+                    != 0
+                ):
                     logging.info(f'Tile {tile} already processed.')
                     continue
 
@@ -871,7 +875,6 @@ def main(
         successful_tiles_count = 0
         total_cutouts_count = 0
         failed_tiles = []
-        complete_processed_cat = None
         # initialize the result variables
         result = 0, 0, 0, True, None
 
@@ -912,15 +915,19 @@ def main(
                         total_cutouts_count += new_cutouts
                         successful_tiles_count += 1
                         catalog.loc[catalog['tile'] == tile, 'cutout'] = 1
+                        catalog_batch = result[4]
+                        catalog_batch.loc[catalog_batch['tile'] == tile, 'cutout'] = 1
+
+                        if complete_processed_cat is None:
+                            complete_processed_cat = catalog_batch
+                        else:
+                            # create catalog of all cutouts objects with labels
+                            complete_processed_cat = pd.concat(
+                                [complete_processed_cat, catalog_batch], ignore_index=True
+                            )
                     else:
                         logging.error(
                             f'Something went wrong in tile {tile}! Only {result[0]+result[1]}/{result[2]} objects were cut out.'
-                        )
-                    if complete_processed_cat is None:
-                        complete_processed_cat = result[4]
-                    else:
-                        complete_processed_cat = pd.concat(
-                            [complete_processed_cat, result[4]], ignore_index=True
                         )
 
                 except Exception as e:
