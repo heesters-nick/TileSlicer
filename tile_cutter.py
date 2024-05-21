@@ -916,7 +916,8 @@ def main(
                         successful_tiles_count += 1
                         catalog.loc[catalog['tile'] == tile, 'cutout'] = 1
                         catalog_batch = result[4]
-                        catalog_batch.loc[catalog_batch['tile'] == tile, 'cutout'] = 1
+                        if catalog_batch is not None:
+                            catalog_batch.loc[catalog_batch['tile'] == tile, 'cutout'] = 1
 
                         if complete_processed_cat is None:
                             complete_processed_cat = catalog_batch
