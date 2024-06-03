@@ -5,6 +5,7 @@ import queue
 import random
 import shutil
 import socket
+import sys
 import threading
 import time
 from collections import deque
@@ -14,6 +15,7 @@ from datetime import timedelta
 import numpy as np
 import pandas as pd
 from astropy.io import fits
+from scipy.stats import kurtosis
 
 # from memory_profiler import profile
 from torch.utils.data import IterableDataset
@@ -371,6 +373,169 @@ def cutout_all_bands_mod(
                 logging.exception(f'Failed to process band {band} for tile {tile}: {str(e)}')
 
     return final_cutouts
+
+
+def calc_pixel_stats(data, df, band):
+    """
+    Calculate pixel statistics of an image.
+
+    Args:
+        data (numpy.ndarray): image data
+        df (dataframe): single row dataframe to store statistics for one tile
+        band (str): band filter
+
+    Returns:
+        dataframe: dataframe filled with calculated values
+    """
+    # Turn data into 1D array
+    pixel_values = data.flatten()
+    valid_mask = np.isfinite(pixel_values)
+    valid_pixels = pixel_values[valid_mask].astype(np.float64)
+
+    n_valid_pixels = np.float64(np.count_nonzero(valid_mask))
+    frac_zeros = (
+        np.count_nonzero(valid_pixels == 0.0) / n_valid_pixels if n_valid_pixels != 0.0 else 0.0
+    )
+
+    # Compute the required statistics if valid pixels are present
+    if n_valid_pixels > 0:
+        sum_pixels = np.sum(valid_pixels)
+        sum_pixels_squared = np.sum(np.square(valid_pixels))
+        nanmin = np.min(valid_pixels)
+        nanmax = np.max(valid_pixels)
+        kurt = kurtosis(valid_pixels)
+    else:
+        sum_pixels = 0.0
+        sum_pixels_squared = 0.0
+        nanmin = np.nan
+        nanmax = np.nan
+        kurt = np.nan
+
+    index = 0
+    df.loc[index, f'{band}_n_valid_pixels'] = n_valid_pixels
+    df.loc[index, f'{band}_sum_pixel_values'] = sum_pixels
+    df.loc[index, f'{band}_sum_pixel_values_squared'] = sum_pixels_squared
+    df.loc[index, f'{band}_min'] = nanmin
+    df.loc[index, f'{band}_max'] = nanmax
+    df.loc[index, f'{band}_frac_zeros'] = frac_zeros
+    df.loc[index, f'{band}_kurtosis'] = kurt
+
+    return df
+
+
+def pixel_stats_one_band(tile, df_empty, download_dir, in_dict, band):
+    """
+    Extract pixel stats for one of the bands.
+
+    Args:
+        tile (tuple): tile numbers
+        df_empty (dataframe): empty dataframe to fill with calculated pixel stats
+        download_dir (str): directory where tile data is stored
+        in_dict (dict): band dictionary
+        band (str): band name
+
+    Returns:
+        dataframe: pixel stats in all bands
+    """
+    tile_dir = download_dir + f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
+    prefix = in_dict[band]['name']
+    suffix = in_dict[band]['suffix']
+    delimiter = in_dict[band]['delimiter']
+    fits_ext = in_dict[band]['fits_ext']
+    zfill = in_dict[band]['zfill']
+    band_name = in_dict[band]['band']
+    tile_fitsfilename = f'{prefix}{delimiter}{str(tile[0]).zfill(zfill)}{delimiter}{str(tile[1]).zfill(zfill)}{suffix}'
+    try:
+        fits_start = time.time()
+        with fits.open(
+            os.path.join(tile_dir, tile_fitsfilename), memmap=True, mode='readonly'
+        ) as hdul:
+            data = hdul[fits_ext].data.astype(np.float64)  # type: ignore
+            logging.debug(f'Opened {tile_fitsfilename}. Took {np.round(time.time()-fits_start, 2)}')
+            pix_stats_start = time.time()
+            df_filled = calc_pixel_stats(data, df_empty, band_name)
+            logging.debug(
+                f'Finished calculating stats for {band} in {np.round(time.time()-pix_stats_start, 2)} seconds.'
+            )
+    except FileNotFoundError:
+        logging.error(f'File {tile_fitsfilename} not found.')
+        return df_empty
+
+    return df_filled
+
+
+def pixel_stats_all_bands(tile, in_dict, download_dir, workers):
+    """
+    Extract pixel stats in all bands concurrently.
+
+    Args:
+        tile (tuple): tile numbers
+        in_dict (dict): band dictionary
+        download_dir (str): directory where tile data is stored
+        workers (int): number of threads
+
+    Returns:
+        dataframe: tile stats
+    """
+    columns = [
+        'tile',
+        'bands',
+        'u_n_valid_pixels',
+        'u_sum_pixel_values',
+        'u_sum_pixel_values_squared',
+        'u_min',
+        'u_max',
+        'u_frac_zeros',
+        'u_kurtosis',
+        'g_n_valid_pixels',
+        'g_sum_pixel_values',
+        'g_sum_pixel_values_squared',
+        'g_min',
+        'g_max',
+        'g_frac_zeros',
+        'g_kurtosis',
+        'r_n_valid_pixels',
+        'r_sum_pixel_values',
+        'r_sum_pixel_values_squared',
+        'r_min',
+        'r_max',
+        'r_frac_zeros',
+        'r_kurtosis',
+        'i_n_valid_pixels',
+        'i_sum_pixel_values',
+        'i_sum_pixel_values_squared',
+        'i_min',
+        'i_max',
+        'i_frac_zeros',
+        'i_kurtosis',
+        'z_n_valid_pixels',
+        'z_sum_pixel_values',
+        'z_sum_pixel_values_squared',
+        'z_min',
+        'z_max',
+        'z_frac_zeros',
+        'z_kurtosis',
+    ]
+    df_empty_row = pd.DataFrame([[pd.NA] * len(columns)], columns=columns)
+    df_master = pd.DataFrame([[pd.NA] * len(columns)], columns=columns)
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        # Dictionary mapping each future to the corresponding band
+        future_to_band = {
+            executor.submit(
+                pixel_stats_one_band, tile, df_empty_row.copy(), download_dir, in_dict, band
+            ): band
+            for band in in_dict.keys()
+        }
+        for future in as_completed(future_to_band):
+            band = future_to_band[future]
+            try:
+                result = future.result()
+                df_master = df_master.combine_first(result)
+            except Exception as e:
+                logging.exception(f'Failed to process band {band} for tile {tile}: {str(e)}')
+
+    return df_master
 
 
 class DataStream(IterableDataset):
@@ -744,6 +909,330 @@ class DataStream(IterableDataset):
             logging.debug(f'Tiles in queue after pull: {list(self.tiles_in_queue)}')
 
             return cutout_stack, obj_catalog, tile_nums
+
+
+class TileStream(IterableDataset):
+    """
+    This class ansynchronously downloads and preprocesses data from the VOSpace.
+    This can be used to gather statistics on the pixel values in each band.
+
+    Args:
+        IterableDataset (dataset): Pytorch dataset for streaming and preprocessing data.
+    """
+
+    def __init__(
+        self,
+        update_tiles,
+        tile_info_dir,
+        unions_det_dir,
+        band_constr,
+        download_dir,
+        in_dict,
+        at_least_key,
+        show_stats,
+        stats_workers,
+        download_workers,
+        queue_size,
+        processed,
+        exclude_processed,
+    ):
+        self.update_tiles = update_tiles
+        self.tile_info_dir = tile_info_dir
+        self.unions_det_dir = unions_det_dir
+        self.band_constr = band_constr
+        self.download_dir = download_dir
+        self.in_dict = in_dict
+        self.at_least_key = at_least_key
+        self.show_stats = show_stats
+        self.stats_workers = stats_workers
+        self.download_workers = download_workers
+        self.queue_size = queue_size
+        self.tiles_in_queue = deque()
+        self.processed = processed
+        self.exclude_processed = exclude_processed
+
+        # maxsize determines how long the queue should be
+        self.prefetch_queue = queue.Queue(maxsize=self.queue_size)
+        self._initialize_tiles()
+
+        # Initialize a lock for synchronizing access to the queue
+        self.queue_lock = threading.Lock()
+
+        # Initialize tile fetching and processing thread
+        self.fetch_thread = threading.Thread(target=self._fetch_and_preprocess_tiles)
+        # Daemonize the thread to stop when the main thread stops
+        self.fetch_thread.daemon = True
+
+    def _initialize_tiles(self):
+        """
+        Initialize the list of tiles to process.
+        """
+        logging.info('Initializing tiles..')
+        if self.update_tiles:
+            update_available_tiles(self.tile_info_dir, self.in_dict)
+        # Extract available tile numbers from file
+        all_bands = extract_tile_numbers(
+            load_available_tiles(self.tile_info_dir, self.in_dict), self.in_dict
+        )
+        self.availability = TileAvailability(all_bands, self.in_dict, self.at_least_key)
+
+        # Optionally show tile statistics
+        if self.show_stats:
+            self.availability.stats()
+
+        # Filter tiles based on detection catalogs and constraints
+        _, self.tiles_x_bands = tiles_from_unions_catalogs(
+            self.availability, self.unions_det_dir, self.band_constr
+        )
+        total_n_tiles = len(self.tiles_x_bands)
+        # Randomly shuffle the tile list to randomize the processing order
+        random.shuffle(self.tiles_x_bands)
+        # Check what tiles have already been processed and exclude them from the list
+        processed_tiles = read_processed(self.processed)
+        processed_tiles = {ast.literal_eval(s) for s in processed_tiles}
+        logging.info(
+            f'Total number of tiles that meet band constraint and have a detection catalog: {len(self.tiles_x_bands)}'
+        )
+        # Exclude tiles that have already been processed from the list
+        if self.exclude_processed:
+            self.tiles_x_bands = list(set(self.tiles_x_bands) - processed_tiles)
+        logging.info(f'Already processed {len(processed_tiles)}/{total_n_tiles} tiles.')
+
+        if len(self.tiles_x_bands) == 0:
+            logging.info('All available tiles have already been processed. Stopping script.')
+            sys.exit()
+
+        logging.info('Finished initializing tiles.')
+        # Initialize tile index (for tracking which tile to process next)
+        self.current_tile_index = 0
+
+    def _determine_next_tile(self):
+        """
+        Deliver tile numbers of the next tile.
+
+        Returns:
+            tuple: tile numbers
+        """
+        if self.current_tile_index >= len(self.tiles_x_bands):
+            return None  # Indicates no more tiles left
+
+        tile_nums = self.tiles_x_bands[self.current_tile_index]
+        self.current_tile_index += 1
+
+        return tile_nums
+
+    def _fetch_and_preprocess_tiles(self):
+        """
+        Concurrently downloads new data.
+        """
+        while True:
+            # Wait for an empty spot in the queue
+            while self.prefetch_queue.qsize() >= self.queue_size:
+                time.sleep(0.5)
+            logging.debug('Queue spot available.')
+            tile_info = self._determine_next_tile()
+            if tile_info is None:
+                break  # No more tiles left
+            logging.info(f'Fetching tile {tuple(tile_info)}..')
+            self.fetch_start = time.time()
+
+            # Set up events and instance variables to monitor thread completion and success
+            download_event = threading.Event()
+            self.download_success = False
+
+            download_thread = threading.Thread(
+                target=self._download_tile, args=(tile_info, download_event)
+            )
+            download_thread.start()
+
+            # Wait for both download and catalog processing to finish
+            download_event.wait()
+
+            if self.download_success:
+                # Extract tile stats and feed dataframe into the queue
+                self._extract_tile_stats(tile_info)
+            else:
+                # Error occured processing this tile, skip to the next
+                continue
+
+    def _download_tile(self, tile_nums, download_event, max_retries=3, retry_delay=5):
+        """
+        Download tile concurrently in all available bands.
+
+        Args:
+            tile_nums (tuple): tile numbers
+            download_event (threading.event): signals process completion
+            max_retries (int, optional): max number of retries if a download fails. Defaults to 3.
+            retry_delay (int, optional): delay in seconds before trying again. Defaults to 5.
+        """
+        download_start = time.time()
+        logging.info(f'Downloading tile {tile_nums}..')
+        retries = 0
+        while retries < max_retries:
+            try:
+                if download_tile_for_bands_parallel(
+                    self.availability,
+                    tile_nums,
+                    self.in_dict,
+                    self.download_dir,
+                    self.download_workers,
+                ):
+                    download_event.set()  # Signal that process is finished
+                    self.download_success = True
+                    logging.info(
+                        f'Successfully downloaded tile {tile_nums} in {np.round(time.time()-download_start, 2)} seconds.'
+                    )
+                    return
+            except Exception as e:
+                logging.error(f'Error downloading tile {tile_nums}: {e}, attempt {retries+1}')
+
+            retries += 1
+            if retries < max_retries:
+                logging.info(f'Retrying download for tile {tile_nums}...')
+                time.sleep(retry_delay)
+
+        logging.error(f'Failed to download tile {tile_nums} after {max_retries} attempts.')
+        self.download_success = False
+        download_event.set()  # Signal that process is finished
+
+        # Cleanup: Close any open network connections
+        socket.setdefaulttimeout(None)
+
+    def _extract_info(self, tile_nums, stats_event):
+        """
+        Extract pixel statistics for all available bands.
+
+        Args:
+            tile_nums (tuple): tile numbers
+            stats_event (threading.event): signals process completion
+        """
+        stats_start = time.time()
+        self.tile_stats = None
+        logging.info(f'Calculating stats for tile {tile_nums}.')
+        try:
+            self.tile_stats = pixel_stats_all_bands(
+                tile_nums, self.in_dict, self.download_dir, self.stats_workers
+            )
+            avail_bands = ''.join(self.availability.get_availability(tile_nums)[0])
+            # Add tile numbers to dataframe
+            self.tile_stats.loc[0, 'tile'] = str(tile_nums)
+            # Add available bands to dataframe
+            self.tile_stats.loc[0, 'bands'] = avail_bands
+            logging.info(
+                f'Finished calculating stats for {tile_nums} in {np.round(time.time()-stats_start, 2)} seconds.'
+            )
+            self.stats_success = True
+        except Exception as e:
+            logging.exception(f'Something went wrong in stats calculation: {e}')
+            self.tile_stats = None
+            self.stats_success = False
+        finally:
+            # signal that the process is completed
+            stats_event.set()
+
+    def _extract_tile_stats(self, tile_nums):
+        """
+        Extract tile statistics in a separate thread.
+        Add the gathered information to the queue as a dataframe row.
+
+        Args:
+            tile_nums (tuple): tile numbers
+        """
+
+        stats_event = threading.Event()
+        self.stats_success = False
+
+        stats_thread = threading.Thread(target=self._extract_info, args=(tile_nums, stats_event))
+        stats_thread.start()
+        stats_event.wait()
+
+        if self.tile_stats is not None:
+            # Acquire lock before accessing shared queue
+            with self.queue_lock:
+                # put data package in the queue
+                self.prefetch_queue.put((self.tile_stats, tile_nums))
+                self.tiles_in_queue.append(tile_nums)  # track tiles in the queue
+
+            logging.info(
+                f'Fetch start to finished data product in {np.round(time.time()-self.fetch_start, 2)} seconds.'
+            )
+        else:
+            logging.info(f'Failed calculating stats for tile {tile_nums}.')
+
+        tile_folder = os.path.join(
+            self.download_dir, f'{str(tile_nums[0]).zfill(3)}_{str(tile_nums[1]).zfill(3)}'
+        )
+        if os.path.exists(tile_folder):
+            logging.info(f'Pixel stats acquired, deleting tile {tile_nums}.')
+            shutil.rmtree(tile_folder)
+
+    def preload(self):
+        """
+        Prefill the queue to create a data buffer when training starts.
+
+        Returns:
+            bool: preload finished
+        """
+        logging.info('Starting preload..')
+        self.fetch_thread.start()
+
+        # Wait until the queue is full
+        while not self.prefetch_queue.full():
+            time.sleep(0.5)
+
+        with self.queue_lock:
+            logging.info(f'Queue is filled with {self.prefetch_queue.qsize()} items.')
+            logging.info(f'Tiles in queue: {list(self.tiles_in_queue)}.')
+
+        logging.info('Preload finished.')
+        return True
+
+    def items_in_queue(self):
+        """
+        Check how many items are currently in the queue.
+
+        Returns:
+            int: number of items currently in the queue
+        """
+
+        with self.queue_lock:
+            return self.prefetch_queue.qsize()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        """
+        Pulls out the next data product.
+
+        Returns:
+            tuple: tile pixel statistics (dataframe), tile numbers
+        """
+        logging.info('Pulling next tile.')
+        with self.queue_lock:  # Thread lock the queue while accessing it
+            logging.info(f'Tiles in queue: {list(self.tiles_in_queue)}.')
+            logging.debug(f'Queue size: {self.prefetch_queue.qsize()}')
+            start_wait_time = time.time()
+            while self.prefetch_queue.empty():
+                self.queue_lock.release()  # Release the lock while waiting
+                time.sleep(0.1)  # Sleep briefly to avoid busy waiting
+                self.queue_lock.acquire()  # Reacquire the lock before checking the queue again
+
+            # monitor downtime
+            wait_time = time.time() - start_wait_time
+            if wait_time > 10 ** (-3):
+                logging.warning(
+                    f'There was a {np.round(wait_time, 2)} second downtime. Adapt max queue length.'
+                )
+            else:
+                logging.info('No downtime recorded when pulling next item from the queue.')
+
+            tile_stats, tile_nums = self.prefetch_queue.get()
+            logging.info(f'Pulled tile {tile_nums} from the queue.')
+            self.tiles_in_queue.popleft()
+            logging.debug(f'Tiles in queue after pull: {list(self.tiles_in_queue)}')
+
+            return tile_stats, tile_nums
 
 
 def main(

@@ -932,3 +932,36 @@ def extract_numbers(file_name):
         return tuple(map(int, substring))
     except (ValueError, IndexError):
         return ()
+
+
+def kahan_sum(nums):
+    """
+    Sum function to sum very large or very small numbers without losing precision.
+
+    Args:
+        nums (numpy.ndarray): array of numbers to be summed
+    Returns:
+        float: sum of numbers
+    """
+    sum = 0.0
+    c = 0.0  # A compensation for low precision
+    for num in nums:
+        y = num - c  # Subtract the compensation
+        t = sum + y  # Add num to sum
+        c = (t - sum) - y  # Calculate new compensation
+        sum = t
+    return sum
+
+
+def update_df_tile_stats(df_path, new_row):
+    """
+    Updates the dataframe used to accumulate tile statistics by appending a new row.
+
+    Args:
+        df_path (str): path to existing dataframe
+        new_row (dataframe): new row to append
+    """
+    if os.path.isfile(df_path):
+        new_row.to_csv(df_path, mode='a', header=False, index=False)
+    else:
+        new_row.to_csv(df_path, index=False)
