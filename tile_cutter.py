@@ -127,8 +127,8 @@ if platform == 'CANFAR':
     root_dir_main = '/arc/home/ashley/SSL/git/'
     root_dir_data = '/arc/projects/unions/'
 else: # assume compute canada for now
-    root_dir_main = '/home/a4ferrei/scratch/github/'
-    root_dir_data = '/home/a4ferrei/scratch/data/'
+    root_dir_main = '/home/a4ferrei/projects/def-sfabbro/a4ferrei/github/'
+    root_dir_data = '/home/a4ferrei/projects/def-sfabbro/a4ferrei/data/'
     root_dir_downloads = root_dir_data
 
 # paths

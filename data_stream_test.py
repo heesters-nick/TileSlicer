@@ -95,8 +95,8 @@ if platform == 'CANFAR':
     root_dir_data = '/arc/projects/unions/'
     root_dir_downloads = '/arc/projects/unions/ssl/data/processed/unions-cutouts/ugriz_lsb/10k_per_h5/'
 else: # assume compute canada for now
-    root_dir_main = '/home/a4ferrei/scratch/github/'
-    root_dir_data = '/home/a4ferrei/scratch/data/'
+    root_dir_main = '/home/a4ferrei/projects/def-sfabbro/a4ferrei/github/'
+    root_dir_data = '/home/a4ferrei/projects/def-sfabbro/a4ferrei/data/'
     root_dir_downloads = root_dir_data
 
 
