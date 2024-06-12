@@ -177,8 +177,6 @@ def dataset_wrapper():
 
     dwarf_catalog_df = pd.read_csv(dwarf_catalog)
     lens_catalog_df = pd.read_parquet(lens_catalog)
-    print(f'DWARF CSV HAS LEN {len(dwarf_catalog_df)}')
-    print(f'LENS CSV HAS LEN {len(lens_catalog_df)}')
 
     ##setup_logging(log_directory, __file__, logging_level=logging.INFO)
     dataset = DataStream(
