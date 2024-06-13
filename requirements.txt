@@ -2,7 +2,7 @@ numpy
 matplotlib
 scipy
 pandas
-astropy>=6.0.0
+astropy==6.0.0
 tqdm
 h5py
 jupyter
@@ -16,3 +16,4 @@ pyarrow
 numba
 torch
 memory_profiler
+PyWavelets

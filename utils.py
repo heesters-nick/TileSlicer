@@ -965,3 +965,19 @@ def update_df_tile_stats(df_path, new_row):
         new_row.to_csv(df_path, mode='a', header=False, index=False)
     else:
         new_row.to_csv(df_path, index=False)
+
+
+def find_band_indices(data, bands):
+    indices = []
+    # Create a lookup for bands to their indices
+    band_to_index = {value['band']: idx for idx, value in enumerate(data.values())}
+    # Loop through the requested bands and get their indices using the lookup
+    for band in bands:
+        index = band_to_index.get(band, -1)  # Get index or -1 if not found
+        indices.append(index)
+    return sorted(indices)
+
+
+def adjust_flux_with_zp(flux, current_zp, standard_zp):
+    adjusted_flux = flux * 10 ** (-0.4 * (current_zp - standard_zp))
+    return adjusted_flux
