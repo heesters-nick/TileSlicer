@@ -319,13 +319,13 @@ def cutout_rgb(
         cutout (dict): dictionary containing cutout data
         obj_idx (int): object index in the cutout data
         bands (list): list of bands to use for the RGB image
-        in_dict (_type_): _description_
-        save_dir (_type_): _description_
-        plot_rgb_cutout (bool, optional): _description_. Defaults to False.
-        save_rgb_cutout (bool, optional): _description_. Defaults to False.
+        in_dict (dict): band dictionary
+        save_dir (str): directory to save the RGB image
+        plot_rgb_cutout (bool, optional): plot the cutout. Defaults to False.
+        save_rgb_cutout (bool, optional): save the cutout. Defaults to False.
 
     Returns:
-        _type_: _description_
+        PIL image: image cutout
     """
     band_idx = find_band_indices(in_dict, bands)
     cutout_rgb = cutout['images'][obj_idx][band_idx]
