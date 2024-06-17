@@ -134,21 +134,33 @@ show_plot = False
 # Save plot
 save_plot = True
 
+platform = 'cedar'  #'CANFAR'
+if platform == 'CANFAR':
+    root_dir_main = '/arc/home/ashley/SSL/git/'
+    root_dir_data = '/arc/projects/unions/'
+    root_dir_downloads = (
+        '/arc/projects/unions/ssl/data/processed/unions-cutouts/ugriz_lsb/10k_per_h5/'
+    )
+else:  # assume compute canada for now
+    root_dir_main = '/home/heesters/projects/def-sfabbro/heesters/github'
+    root_dir_data_ashley = '/home/heesters/projects/def-sfabbro/a4ferrei/data'
+    root_dir_data = '/home/heesters/projects/def-sfabbro/heesters/data'
+
 # paths
 # define the root directory
-main_directory = '/arc/home/heestersnick/tileslicer/'
-data_directory = '/arc/projects/unions/ssl/data/'
-table_directory = os.path.join(main_directory, 'tables/')
+main_directory = os.path.join(root_dir_main, 'TileSlicer')
+data_directory = root_dir_data
+table_directory = os.path.join(main_directory, 'tables')
 os.makedirs(table_directory, exist_ok=True)
 # define UNIONS table directory
-unions_table_directory = '/arc/projects/unions/catalogues/'
+unions_table_directory = os.path.join(root_dir_data_ashley, 'catalogues')
 # define the path to the UNIONS detection catalogs
 unions_detection_directory = os.path.join(
     unions_table_directory, 'unions/GAaP_photometry/UNIONS2000/'
 )
 # define the path to the catalog containing redshifts and classes
 redshift_class_catalog = os.path.join(
-    unions_table_directory, 'redshifts/redshifts-2024-01-04.parquet'
+    unions_table_directory, 'redshifts/redshifts-2024-05-07s.parquet'
 )
 # define the path to the catalog containing known lenses
 lens_catalog = os.path.join(table_directory, 'known_lenses.parquet')
@@ -167,12 +179,10 @@ ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 tile_info_directory = os.path.join(main_directory, 'tile_info/')
 os.makedirs(tile_info_directory, exist_ok=True)
 # define where the tiles should be saved
-download_directory = os.path.join(data_directory, 'raw/tiles/tiles2024/')
+download_directory = os.path.join(data_directory, 'unions/tiles')
 os.makedirs(download_directory, exist_ok=True)
 # define where the cutouts should be saved
-# cutout_directory = os.path.join(data_directory, 'processed/unions-cutouts/cutouts2024/')
-# os.makedirs(cutout_directory, exist_ok=True)
-cutout_directory = os.path.join(main_directory, 'cutouts/')
+cutout_directory = os.path.join(data_directory, 'cutouts/')
 os.makedirs(cutout_directory, exist_ok=True)
 # define where figures should be saved
 figure_directory = os.path.join(main_directory, 'figures/')
@@ -188,6 +198,7 @@ tile_batch_size = 5  # number of tiles to process in parallel
 object_batch_size = 5000  # number of objects to process at a time
 cutout_size = 224
 num_workers = 5  # specifiy the number of parallel workers following machine capabilities
+exclude_processed_tiles = False  # exclude already processed tiles from training
 
 
 def tile_finder(availability, catalog, coord_c, tile_info_dir, band_constr=5):

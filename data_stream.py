@@ -137,14 +137,26 @@ show_plot = False
 # Save plot
 save_plot = True
 
+platform = 'cedar'  #'CANFAR'
+if platform == 'CANFAR':
+    root_dir_main = '/arc/home/ashley/SSL/git/'
+    root_dir_data = '/arc/projects/unions/'
+    root_dir_downloads = (
+        '/arc/projects/unions/ssl/data/processed/unions-cutouts/ugriz_lsb/10k_per_h5/'
+    )
+else:  # assume compute canada for now
+    root_dir_main = '/home/heesters/projects/def-sfabbro/heesters/github'
+    root_dir_data_ashley = '/home/heesters/projects/def-sfabbro/a4ferrei/data'
+    root_dir_data = '/home/heesters/projects/def-sfabbro/heesters/data'
+
 # paths
 # define the root directory
-main_directory = '/arc/home/heestersnick/tileslicer/'
-data_directory = '/arc/projects/unions/ssl/data/'
-table_directory = os.path.join(main_directory, 'tables/')
+main_directory = os.path.join(root_dir_main, 'TileSlicer')
+data_directory = root_dir_data
+table_directory = os.path.join(main_directory, 'tables')
 os.makedirs(table_directory, exist_ok=True)
 # define UNIONS table directory
-unions_table_directory = '/arc/projects/unions/catalogues/'
+unions_table_directory = os.path.join(root_dir_data_ashley, 'catalogues')
 # define the path to the UNIONS detection catalogs
 unions_detection_directory = os.path.join(
     unions_table_directory, 'unions/GAaP_photometry/UNIONS2000/'
@@ -170,12 +182,10 @@ ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 tile_info_directory = os.path.join(main_directory, 'tile_info/')
 os.makedirs(tile_info_directory, exist_ok=True)
 # define where the tiles should be saved
-download_directory = os.path.join(data_directory, 'raw/tiles/tiles2024/')
+download_directory = os.path.join(data_directory, 'unions/tiles')
 os.makedirs(download_directory, exist_ok=True)
 # define where the cutouts should be saved
-# cutout_directory = os.path.join(data_directory, 'processed/unions-cutouts/cutouts2024/')
-# os.makedirs(cutout_directory, exist_ok=True)
-cutout_directory = os.path.join(main_directory, 'cutouts/')
+cutout_directory = os.path.join(data_directory, 'cutouts/')
 os.makedirs(cutout_directory, exist_ok=True)
 # define where figures should be saved
 figure_directory = os.path.join(main_directory, 'figures/')
