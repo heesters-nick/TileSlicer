@@ -137,7 +137,7 @@ show_plot = False
 # Save plot
 save_plot = True
 
-platform = 'narvall'  #'CANFAR'
+platform = 'narval'  #'CANFAR'
 if platform == 'CANFAR':
     root_dir_main = '/arc/home/ashley/SSL/git/'
     root_dir_data = '/arc/projects/unions/'
