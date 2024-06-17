@@ -133,7 +133,7 @@ with_plot = True
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
 plot_random_cutout = True
 # Show plot
-show_plot = True
+show_plot = False
 # Save plot
 save_plot = True
 
