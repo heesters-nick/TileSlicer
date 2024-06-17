@@ -133,9 +133,9 @@ with_plot = True
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
 plot_random_cutout = True
 # Show plot
-show_plot = False
+show_plot = True
 # Save plot
-save_plot = False
+save_plot = True
 
 platform = 'cedar'  #'CANFAR'
 if platform == 'CANFAR':
