@@ -135,7 +135,7 @@ plot_random_cutout = True
 # Show plot
 show_plot = False
 # Save plot
-save_plot = False
+save_plot = True
 
 platform = 'cedar'  #'CANFAR'
 if platform == 'CANFAR':
