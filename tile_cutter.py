@@ -18,9 +18,7 @@ from astropy.nddata.utils import Cutout2D
 from astropy.wcs.utils import skycoord_to_pixel
 from vos import Client
 
-from kd_tree import TileWCS, build_tree, query_tree, relate_coord_tile
-from plotting import plot_cutout
-from utils import (
+from data_utils import (
     TileAvailability,
     add_labels,
     extract_tile_numbers,
@@ -36,6 +34,8 @@ from utils import (
     update_master_cat,
     update_processed,
 )
+from kd_tree import TileWCS, build_tree, query_tree, relate_coord_tile
+from plotting import plot_cutout
 
 client = Client()
 

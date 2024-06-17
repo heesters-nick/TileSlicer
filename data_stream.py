@@ -21,13 +21,7 @@ from scipy.stats import kurtosis
 from torch.utils.data import IterableDataset
 from vos import Client
 
-from kd_tree import build_tree
-from plotting import plot_cutout
-from tile_cutter import (
-    download_tile_for_bands_parallel,
-    tiles_from_unions_catalogs,
-)
-from utils import (
+from data_utils import (
     TileAvailability,
     add_labels,
     extract_tile_numbers,
@@ -37,6 +31,12 @@ from utils import (
     read_unions_cat,
     setup_logging,
     update_available_tiles,
+)
+from kd_tree import build_tree
+from plotting import plot_cutout
+from tile_cutter import (
+    download_tile_for_bands_parallel,
+    tiles_from_unions_catalogs,
 )
 
 client = Client()

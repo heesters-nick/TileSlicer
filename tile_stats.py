@@ -6,7 +6,7 @@ import pandas as pd
 from vos import Client
 
 from data_stream import TileStream
-from utils import setup_logging, update_df_tile_stats, update_processed
+from data_utils import setup_logging, update_df_tile_stats, update_processed
 
 client = Client()
 

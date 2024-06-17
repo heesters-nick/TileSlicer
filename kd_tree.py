@@ -6,7 +6,7 @@ from astropy.coordinates import SkyCoord
 from astropy.wcs import WCS
 from scipy.spatial import cKDTree
 
-from utils import relate_coord_tile
+from data_utils import relate_coord_tile
 
 
 def build_tree(tiles, tile_info_dir, save=True):

@@ -9,7 +9,7 @@ from PIL import Image
 from scipy.interpolate import griddata
 from scipy.ndimage import binary_dilation, binary_fill_holes, label
 
-from utils import adjust_flux_with_zp, find_band_indices
+from data_utils import adjust_flux_with_zp, find_band_indices
 
 
 def plot_cutout(
@@ -67,7 +67,7 @@ def plot_cutout(
     # Loop through objects and filter bands, and plot each image
     for i in range(n_objects):  # Number of objects
         for j in range(n_bands + 1):  # Number of filter bands + 1 for RGB
-            ax = axes[i, j]
+            ax = axes[i, j]  # type: ignore
             if j < n_bands:
                 band = list(in_dict.keys())[j]
                 # Get the image data for the current object and filter band

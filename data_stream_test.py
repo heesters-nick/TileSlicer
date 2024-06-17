@@ -8,7 +8,7 @@ import pandas as pd
 from vos import Client
 
 from data_stream import DataStream
-from utils import setup_logging, update_processed
+from data_utils import setup_logging, update_processed
 
 client = Client()
 
