@@ -17,3 +17,4 @@ logs/
 tables/cutout_catalog_master.parquet
 .conda/
 cadcproxy.pem
+*slurm*

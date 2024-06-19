@@ -76,7 +76,7 @@ band_dict_incl = {key: band_dict.get(key) for key in considered_bands}
 
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = False
+update_tiles = True
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -103,7 +103,7 @@ show_plot = False
 # Save plot
 save_plot = True
 
-platform = 'cedar'  #'CANFAR'
+platform = 'narval'  #'CANFAR'
 if platform == 'CANFAR':
     root_dir_main = '/arc/home/ashley/SSL/git/'
     root_dir_data = '/arc/projects/unions/'
@@ -173,6 +173,8 @@ queue_size = 2  # max queue size, keep as low as possible to not consume too muc
 logging_level = logging.INFO
 exclude_processed_tiles = True  # exclude already processed tiles from training
 
+setup_logging(log_directory, __file__, logging_level=logging_level)
+
 
 def simulated_training_step(item):
     """
@@ -214,8 +216,6 @@ def main(
     log_dir,
     log_level,
 ):
-    setup_logging(log_dir, __file__, logging_level=log_level)
-
     dataset = DataStream(
         update,
         tile_info_dir,
