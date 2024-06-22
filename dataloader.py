@@ -10,8 +10,6 @@ from vos import Client
 from data_stream import DataStream
 from data_utils import setup_logging
 
-##from utils import setup_logging
-
 client = Client()
 
 band_dict = {
@@ -104,17 +102,27 @@ show_plot = False
 # Save plot
 save_plot = True
 
-platform = 'cedar'  #'CANFAR'
+platform = 'narval'  #'CANFAR'
 if platform == 'CANFAR':
     root_dir_main = '/arc/home/ashley/SSL/git/'
     root_dir_data = '/arc/projects/unions/'
     root_dir_downloads = (
         '/arc/projects/unions/ssl/data/processed/unions-cutouts/ugriz_lsb/10k_per_h5/'
     )
+    unions_detection_directory = os.path.join(
+        root_dir_data, 'catalogues/unions/GAaP_photometry/UNIONS2000'
+    )
+    redshift_class_catalog = os.path.join(
+        root_dir_data, 'catalogues/redshifts/redshifts-2024-05-07.parquet'
+    )
 else:  # assume compute canada for now
     root_dir_main = '/home/heesters/projects/def-sfabbro/heesters/github'
     root_dir_data_ashley = '/home/heesters/projects/def-sfabbro/a4ferrei/data'
-    root_dir_data = '/home/heesters/projects/def-sfabbro/heesters/data'
+    root_dir_data = '/home/heesters/projects/def-sfabbro/heesters/data/unions'
+    unions_detection_directory = os.path.join(root_dir_data, 'catalogs/GAaP/UNIONS2000')
+    redshift_class_catalog = os.path.join(
+        root_dir_data, 'catalogs/labels/redshifts/redshifts-2024-05-07.parquet'
+    )
 
 # paths
 # define the root directory
@@ -122,16 +130,6 @@ main_directory = os.path.join(root_dir_main, 'TileSlicer')
 data_directory = root_dir_data
 table_directory = os.path.join(main_directory, 'tables')
 os.makedirs(table_directory, exist_ok=True)
-# define UNIONS table directory
-unions_table_directory = os.path.join(root_dir_data_ashley, 'catalogues')
-# define the path to the UNIONS detection catalogs
-unions_detection_directory = os.path.join(
-    unions_table_directory, 'unions/GAaP_photometry/UNIONS2000/'
-)
-# define the path to the catalog containing redshifts and classes
-redshift_class_catalog = os.path.join(
-    unions_table_directory, 'redshifts/redshifts-2024-05-07.parquet'
-)
 # define the path to the catalog containing known lenses
 lens_catalog = os.path.join(table_directory, 'known_lenses.parquet')
 # define the path to the master catalog that accumulates information about the cut out objects
@@ -146,19 +144,19 @@ catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))  # not
 # define the keys for ra, dec, and id in the catalog
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
-tile_info_directory = os.path.join(main_directory, 'tile_info/')
+tile_info_directory = os.path.join(main_directory, 'tile_info')
 os.makedirs(tile_info_directory, exist_ok=True)
 # define where the tiles should be saved
 download_directory = os.path.join(data_directory, 'unions/tiles')
 os.makedirs(download_directory, exist_ok=True)
 # define where the cutouts should be saved
-cutout_directory = os.path.join(data_directory, 'cutouts/')
+cutout_directory = os.path.join(data_directory, 'cutouts')
 os.makedirs(cutout_directory, exist_ok=True)
 # define where figures should be saved
-figure_directory = os.path.join(main_directory, 'figures/')
+figure_directory = os.path.join(main_directory, 'figures')
 os.makedirs(figure_directory, exist_ok=True)
 # define where the logs should be saved
-log_directory = os.path.join(main_directory, 'logs/')
+log_directory = os.path.join(main_directory, 'logs')
 os.makedirs(log_directory, exist_ok=True)
 
 band_constraint = 5  # define the minimum number of bands that should be available for a tile

@@ -144,10 +144,20 @@ if platform == 'CANFAR':
     root_dir_downloads = (
         '/arc/projects/unions/ssl/data/processed/unions-cutouts/ugriz_lsb/10k_per_h5/'
     )
+    unions_detection_directory = os.path.join(
+        root_dir_data, 'catalogues/unions/GAaP_photometry/UNIONS2000'
+    )
+    redshift_class_catalog = os.path.join(
+        root_dir_data, 'catalogues/redshifts/redshifts-2024-05-07.parquet'
+    )
 else:  # assume compute canada for now
     root_dir_main = '/home/heesters/projects/def-sfabbro/heesters/github'
     root_dir_data_ashley = '/home/heesters/projects/def-sfabbro/a4ferrei/data'
     root_dir_data = '/home/heesters/projects/def-sfabbro/heesters/data'
+    unions_detection_directory = os.path.join(root_dir_data, 'unions/catalogs/GAaP/UNIONS2000')
+    redshift_class_catalog = os.path.join(
+        root_dir_data, 'unions/catalogs/labels/redshifts/redshifts-2024-05-07.parquet'
+    )
 
 # paths
 # define the root directory
@@ -155,16 +165,6 @@ main_directory = os.path.join(root_dir_main, 'TileSlicer')
 data_directory = root_dir_data
 table_directory = os.path.join(main_directory, 'tables')
 os.makedirs(table_directory, exist_ok=True)
-# define UNIONS table directory
-unions_table_directory = os.path.join(root_dir_data_ashley, 'catalogues')
-# define the path to the UNIONS detection catalogs
-unions_detection_directory = os.path.join(
-    unions_table_directory, 'unions/GAaP_photometry/UNIONS2000/'
-)
-# define the path to the catalog containing redshifts and classes
-redshift_class_catalog = os.path.join(
-    unions_table_directory, 'redshifts/redshifts-2024-05-07.parquet'
-)
 # define the path to the catalog containing known lenses
 lens_catalog = os.path.join(table_directory, 'known_lenses.parquet')
 # define the path to the master catalog that accumulates information about the cut out objects
