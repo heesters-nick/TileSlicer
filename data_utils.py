@@ -2,6 +2,7 @@ import glob
 import logging
 import os
 import re
+import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from itertools import combinations
@@ -15,9 +16,8 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.table import Table
 from tqdm import tqdm
-from vos import Client
 
-client = Client()
+# client = Client()
 
 
 def setup_logging(log_dir, script_name, logging_level):
@@ -92,12 +92,18 @@ def update_available_tiles(path, in_dict, save=True):
         suffix = in_dict[band]['suffix']
 
         start_fetch = time.time()
-        logging.info(f'Retrieving {band_filter}-band tiles...')
-        band_tiles = client.glob1(vos_dir, f'*{suffix}')
-        end_fetch = time.time()
-        logging.info(
-            f'Retrieving {band_filter}-band tiles completed. Took {np.round((end_fetch-start_fetch)/60, 3)} minutes.'
-        )
+        try:
+            logging.info(f'Retrieving {band_filter}-band tiles...')
+            # band_tiles = Client().glob(os.path.join(vos_dir, f'*{suffix}'))
+            band_tiles = list_vospace(vos_dir, f'*{suffix}')
+            band_tiles = [os.path.basename(tile) for tile in band_tiles]
+            # band_tiles = filter_files(band_files, suffix)
+            end_fetch = time.time()
+            logging.info(
+                f'Retrieving {band_filter}-band tiles completed. Took {np.round((end_fetch-start_fetch)/60, 3)} minutes.'
+            )
+        except Exception as e:
+            logging.error(f'Error fetching {band_filter}-band tiles: {e}')
         if save:
             np.savetxt(path + f'{band}_tiles.txt', band_tiles, fmt='%s')
 
@@ -981,3 +987,40 @@ def find_band_indices(data, bands):
 def adjust_flux_with_zp(flux, current_zp, standard_zp):
     adjusted_flux = flux * 10 ** (-0.4 * (current_zp - standard_zp))
     return adjusted_flux
+
+
+def find_and_save_file_names(directory, pattern, output_file):
+    """
+    Finds files matching a specific pattern in a directory and writes their filenames to a file.
+
+    Args:
+    directory (str): The directory to search in.
+    pattern (str): The file pattern to search for.
+    output_file (str): File to write the filenames to.
+    """
+    # Construct the find command
+    find_command = f"find {directory} -type f -name '{pattern}' -print0"
+
+    # Use basename with xargs to extract filenames
+    xargs_command = 'xargs -0 -I {} basename {}'
+
+    # Execute the find command and pipe to xargs, then redirect to output file
+    command = f'{find_command} | {xargs_command} > {output_file}'
+    subprocess.run(command, shell=True, check=True)
+
+
+def list_vospace(directory, suffix=''):
+    """Use vls to list contents of a VOSpace directory"""
+    try:
+        result = subprocess.run(
+            ['vls', f'{directory}{suffix}'], text=True, capture_output=True, check=True
+        )
+        entry_list = [line.strip() for line in result.stdout.splitlines()]
+        return entry_list
+    except subprocess.CalledProcessError as e:
+        logging.error(f'Error listing {directory}: {e}')
+        return []
+
+
+def filter_files(files, suffix):
+    return [file for file in files if file.endswith(suffix)]

@@ -82,7 +82,7 @@ if __name__ == '__main__':
     main_directory = '/home/heesters/projects/def-sfabbro/heesters/github/TileSlicer'
     log_directory = os.path.join(main_directory, 'logs/')
     os.makedirs(log_directory, exist_ok=True)
-    setup_logging(log_directory, __file__, logging_level=logging.DEBUG)
+    setup_logging(log_directory, __file__, logging_level=logging.INFO)
     logging.info('Downloading GAaP catalogs from VOSpace...')
 
     main()
