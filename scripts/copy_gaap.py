@@ -26,7 +26,8 @@ def find_catalogs(client, entries, vos_path, local_path, file_pattern):
         logging.debug(f'Processing entry: {entry}')
         sub_dir_path = os.path.join(vos_path, entry)
         if client.isdir(sub_dir_path):
-            local_file_path = os.path.join(sub_dir_path, entry, entry + file_pattern)
+            local_file_path = os.path.join(local_path, entry, entry + file_pattern)
+            logging.debug(f'Local file path: {local_file_path}')
             if os.path.exists(local_file_path):
                 logging.info(f'Catalog {entry} already downloaded. Skipping.')
                 continue
@@ -62,12 +63,6 @@ def main():
     base_vospace_dir = 'arc:projects/unions/catalogues/unions/GAaP_photometry/UNIONS2000'
     local_dir = '/home/heesters/projects/def-sfabbro/heesters/data/unions/catalogs/GAaP/UNIONS2000'
 
-    main_directory = '/home/heesters/projects/def-sfabbro/heesters/github/TileSlicer'
-    log_directory = os.path.join(main_directory, 'logs/')
-    os.makedirs(log_directory, exist_ok=True)
-
-    setup_logging(log_directory, __file__, logging_level=logging.INFO)
-
     client = vos.Client()
 
     # List the contents of the base directory recursively
@@ -84,5 +79,10 @@ def main():
 
 
 if __name__ == '__main__':
-    print('Downloading GAaP catalogs from VOSpace...')
+    main_directory = '/home/heesters/projects/def-sfabbro/heesters/github/TileSlicer'
+    log_directory = os.path.join(main_directory, 'logs/')
+    os.makedirs(log_directory, exist_ok=True)
+    setup_logging(log_directory, __file__, logging_level=logging.DEBUG)
+    logging.info('Downloading GAaP catalogs from VOSpace...')
+
     main()
