@@ -16,6 +16,7 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.table import Table
 from tqdm import tqdm
+from vos import Client
 
 # client = Client()
 
@@ -94,9 +95,9 @@ def update_available_tiles(path, in_dict, save=True):
         start_fetch = time.time()
         try:
             logging.info(f'Retrieving {band_filter}-band tiles...')
-            # band_tiles = Client().glob(os.path.join(vos_dir, f'*{suffix}'))
-            band_tiles = list_vospace(vos_dir, f'*{suffix}')
-            band_tiles = [os.path.basename(tile) for tile in band_tiles]
+            band_tiles = Client().glob1(vos_dir, f'*{suffix}')
+            # band_tiles = list_vospace(vos_dir, f'*{suffix}')
+            # band_tiles = [os.path.basename(tile) for tile in band_tiles]
             # band_tiles = filter_files(band_files, suffix)
             end_fetch = time.time()
             logging.info(
