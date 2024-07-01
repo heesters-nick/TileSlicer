@@ -233,24 +233,27 @@ def main(
         exclude_processed,
     )  # Initialize dataset
 
-    num_iterations = 6  # How many training steps should be simulated
+    max_iterations = 6  # How many training steps should be simulated
+    num_iterations = 0  # Iterations done
     # Prefill the queue to create a buffer
     if dataset.preload():
         logging.info('Preload finished.')
-        for _ in range(num_iterations):
-            try:
-                cutouts, catalog, tile = dataset.__next__()  # pull out the an item for training
+        try:
+            for cutouts, catalog, tile in dataset:  # pull out the an item for training
                 logging.debug(f'Got tile {tile}.')
                 simulated_training_step((cutouts, catalog, tile))
                 update_processed(str(tile), processed)
                 del cutouts  # cleanup
                 del catalog
                 del tile
+                num_iterations += 1
 
-            except KeyboardInterrupt:
-                break
+                if num_iterations >= max_iterations:
+                    logging.info('Max number of iterations reached. Stopping script.')
+                    break
 
-    logging.info('Max number of iterations reached. Stopping script.')
+        except KeyboardInterrupt:
+            logging.info('Script interrupted by user.')
 
 
 if __name__ == '__main__':
