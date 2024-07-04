@@ -8,6 +8,7 @@ import pandas as pd
 
 from data_stream import DataStream
 from data_utils import setup_logging, update_processed
+from tile_cutter import save_to_h5
 
 band_dict = {
     'cfis-u': {
@@ -73,7 +74,7 @@ band_dict_incl = {key: band_dict.get(key) for key in considered_bands}
 
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = True
+update_tiles = False
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -162,12 +163,13 @@ os.makedirs(log_directory, exist_ok=True)
 
 band_constraint = 5  # define the minimum number of bands that should be available for a tile
 cutout_size = 224
-number_objects = 5000  # give number of objects per tile that should be processed or say 'all'
+number_objects = 100  # give number of objects per tile that should be processed or say 'all'
 num_cutout_workers = 5  # number of threads for cutout creation
 num_download_workers = 5  # number of threads for tile download
 queue_size = 2  # max queue size, keep as low as possible to not consume too much RAM
 logging_level = logging.INFO  # define the logging level
 exclude_processed_tiles = True  # exclude already processed tiles from training
+save_cutouts_and_metadata = False  # save cutouts and metadata to files
 
 setup_logging(log_directory, __file__, logging_level=logging_level)
 
@@ -196,6 +198,7 @@ def main(
     unions_det_dir,
     band_constr,
     download_dir,
+    table_dir,
     in_dict,
     cutout_size,
     at_least_key,
@@ -209,8 +212,7 @@ def main(
     queue_size,
     processed,
     exclude_processed,
-    log_dir,
-    log_level,
+    save_cuts_and_meta,
 ):
     dataset = DataStream(
         update,
@@ -233,7 +235,7 @@ def main(
         exclude_processed,
     )  # Initialize dataset
 
-    max_iterations = 6  # How many training steps should be simulated
+    max_iterations = 3  # How many training steps should be simulated
     num_iterations = 0  # Iterations done
     # Prefill the queue to create a buffer
     if dataset.preload():
@@ -243,6 +245,24 @@ def main(
                 logging.debug(f'Got tile {tile}.')
                 simulated_training_step((cutouts, catalog, tile))
                 update_processed(str(tile), processed)
+                if save_cuts_and_meta:
+                    catalog.to_csv(os.path.join(table_dir, f'{tile}_catalog.csv'), index=False)
+                    save_to_h5(
+                        cutouts,
+                        tile,
+                        catalog['ID'].values,
+                        catalog['ra'].values,
+                        catalog['dec'].values,
+                        catalog['mag_r'].values,
+                        catalog['class'].values,
+                        catalog['zspec'].values,
+                        catalog['lsb'].values,
+                        catalog['lens'].values,
+                        os.path.join(
+                            '/arc/home/heestersnick/tileslicer/cutouts',
+                            f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}_{cutout_size}x{cutout_size}_ugriz.h5',
+                        ),
+                    )
                 del cutouts  # cleanup
                 del catalog
                 del tile
@@ -263,6 +283,7 @@ if __name__ == '__main__':
         unions_detection_directory,
         band_constraint,
         download_directory,
+        table_directory,
         band_dict_incl,
         cutout_size,
         at_least,
@@ -278,4 +299,5 @@ if __name__ == '__main__':
         exclude_processed_tiles,
         log_directory,
         logging_level,
+        save_cutouts_and_metadata,
     )
