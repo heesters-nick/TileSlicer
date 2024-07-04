@@ -297,7 +297,5 @@ if __name__ == '__main__':
         queue_size,
         processed_file,
         exclude_processed_tiles,
-        log_directory,
-        logging_level,
         save_cutouts_and_metadata,
     )
