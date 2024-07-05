@@ -107,7 +107,7 @@ def update_available_tiles(path, in_dict, save=True):
         except Exception as e:
             logging.error(f'Error fetching {band_filter}-band tiles: {e}')
         if save:
-            np.savetxt(path + f'{band}_tiles.txt', band_tiles, fmt='%s')
+            np.savetxt(os.path.join(path, f'{band}_tiles.txt'), band_tiles, fmt='%s')
 
 
 def load_available_tiles(path, in_dict):

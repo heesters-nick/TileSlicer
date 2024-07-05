@@ -96,7 +96,7 @@ show_plot = False
 # Save plot
 save_plot = True
 
-platform = 'CANFAR'  #'CANFAR'
+platform = 'Narval'  #'CANFAR'
 if platform == 'CANFAR':
     root_dir_main = '/arc/home/heestersnick/tileslicer'
     root_dir_data = '/arc/projects/unions'
@@ -113,12 +113,12 @@ if platform == 'CANFAR':
 else:  # assume compute canada for now
     root_dir_main = '/home/heesters/projects/def-sfabbro/heesters/github/TileSlicer'
     root_dir_data_ashley = '/home/heesters/projects/def-sfabbro/a4ferrei/data'
-    root_dir_data = '/home/heesters/projects/def-sfabbro/heesters/data'
-    unions_detection_directory = os.path.join(root_dir_data, 'catalogs/unions/GAaP/UNIONS2000')
+    root_dir_data = '/home/heesters/projects/def-sfabbro/heesters/data/unions'
+    unions_detection_directory = os.path.join(root_dir_data, 'catalogs/GAaP/UNIONS2000')
     redshift_class_catalog = os.path.join(
-        root_dir_data, 'unions/catalogs/labels/redshifts/redshifts-2024-05-07.parquet'
+        root_dir_data, 'catalogs/labels/redshifts/redshifts-2024-05-07.parquet'
     )
-    download_directory = os.path.join(root_dir_data, 'unions/tiles')
+    download_directory = os.path.join(root_dir_data, 'tiles')
     os.makedirs(download_directory, exist_ok=True)
     cutout_directory = os.path.join(root_dir_data, 'cutouts')
     os.makedirs(cutout_directory, exist_ok=True)

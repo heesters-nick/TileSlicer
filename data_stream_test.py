@@ -101,7 +101,7 @@ show_plot = False
 # Save plot
 save_plot = True
 
-platform = 'CANFAR'  #'CANFAR'
+platform = 'Narval'  #'CANFAR'
 if platform == 'CANFAR':
     root_dir_main = '/arc/home/heestersnick/tileslicer'
     root_dir_data = '/arc/projects/unions'
@@ -118,12 +118,12 @@ if platform == 'CANFAR':
 else:  # assume compute canada for now
     root_dir_main = '/home/heesters/projects/def-sfabbro/heesters/github/TileSlicer'
     root_dir_data_ashley = '/home/heesters/projects/def-sfabbro/a4ferrei/data'
-    root_dir_data = '/home/heesters/projects/def-sfabbro/heesters/data'
-    unions_detection_directory = os.path.join(root_dir_data, 'catalogs/unions/GAaP/UNIONS2000')
+    root_dir_data = '/home/heesters/projects/def-sfabbro/heesters/data/unions'
+    unions_detection_directory = os.path.join(root_dir_data, 'catalogs/GAaP/UNIONS2000')
     redshift_class_catalog = os.path.join(
-        root_dir_data, 'unions/catalogs/labels/redshifts/redshifts-2024-05-07.parquet'
+        root_dir_data, 'catalogs/labels/redshifts/redshifts-2024-05-07.parquet'
     )
-    download_directory = os.path.join(root_dir_data, 'unions/tiles')
+    download_directory = os.path.join(root_dir_data, 'tiles')
     os.makedirs(download_directory, exist_ok=True)
     cutout_directory = os.path.join(root_dir_data, 'cutouts')
     os.makedirs(cutout_directory, exist_ok=True)
@@ -152,13 +152,13 @@ catalog_script = pd.read_csv(os.path.join(table_directory, catalog_file))
 # define the keys for ra, dec, and id in the catalog
 ra_key_script, dec_key_script, id_key_script = 'ra', 'dec', 'ID'
 # define where the information about the currently available tiles should be saved
-tile_info_directory = os.path.join(main_directory, 'tile_info/')
+tile_info_directory = os.path.join(main_directory, 'tile_info')
 os.makedirs(tile_info_directory, exist_ok=True)
 # define where figures should be saved
-figure_directory = os.path.join(main_directory, 'figures/')
+figure_directory = os.path.join(main_directory, 'figures')
 os.makedirs(figure_directory, exist_ok=True)
 # define where the logs should be saved
-log_directory = os.path.join(main_directory, 'logs/')
+log_directory = os.path.join(main_directory, 'logs')
 os.makedirs(log_directory, exist_ok=True)
 
 band_constraint = 5  # define the minimum number of bands that should be available for a tile
@@ -167,7 +167,7 @@ number_objects = 100  # give number of objects per tile that should be processed
 num_cutout_workers = 5  # number of threads for cutout creation
 num_download_workers = 5  # number of threads for tile download
 queue_size = 2  # max queue size, keep as low as possible to not consume too much RAM
-logging_level = logging.INFO  # define the logging level
+logging_level = logging.DEBUG  # define the logging level
 exclude_processed_tiles = True  # exclude already processed tiles from training
 save_cutouts_and_metadata = False  # save cutouts and metadata to files
 
