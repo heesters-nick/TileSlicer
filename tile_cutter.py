@@ -504,7 +504,7 @@ def save_to_h5(
         hf.create_dataset('ra', data=ras.astype(np.float32))
         hf.create_dataset('dec', data=decs.astype(np.float32))
         hf.create_dataset('mag_r', data=mag_r.astype(np.float32))
-        hf.create_dataset('class', data=class_label.astype(np.float32))
+        hf.create_dataset('class_label', data=class_label.astype(np.float32))
         hf.create_dataset('zspec', data=z_label.astype(np.float32))
         hf.create_dataset('lsb', data=lsb_label.astype(np.float32))
         hf.create_dataset('lens', data=lens_label.astype(np.float32))
@@ -594,7 +594,7 @@ def process_tile(
                 f'Adding {np.count_nonzero(~np.isnan(obj_batch["zspec"]))} redshifts to the cutout.'
             )
             logging.info(
-                f'Adding {np.count_nonzero(~np.isnan(obj_batch["class"]))} classes to the cutout.'
+                f'Adding {np.count_nonzero(~np.isnan(obj_batch["class_label"]))} classes to the cutout.'
             )
             logging.info(
                 f'Adding {np.count_nonzero(~np.isnan(obj_batch["lsb"]))} lsb objects to the cutout.'
@@ -614,7 +614,7 @@ def process_tile(
                 obj_batch[ra_key].values,
                 obj_batch[dec_key].values,
                 obj_batch['mag_r'].values,
-                obj_batch['class'].values,
+                obj_batch['class_label'].values,
                 obj_batch['zspec'].values,
                 obj_batch['lsb'].values,
                 obj_batch['lens'].values,
@@ -652,7 +652,7 @@ def process_tile(
             obj_in_tile[ra_key].values,
             obj_in_tile[dec_key].values,
             mag_r,
-            obj_in_tile['class'].values,
+            obj_in_tile['class_label'].values,
             obj_in_tile['zspec'].values,
             obj_in_tile['lsb'].values,
             obj_in_tile['lens'].values,

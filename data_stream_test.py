@@ -254,7 +254,7 @@ def main(
                         catalog['ra'].values,
                         catalog['dec'].values,
                         catalog['mag_r'].values,
-                        catalog['class'].values,
+                        catalog['class_label'].values,
                         catalog['zspec'].values,
                         catalog['lsb'].values,
                         catalog['lens'].values,

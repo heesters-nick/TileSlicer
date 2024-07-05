@@ -17,3 +17,4 @@ numba
 torch
 memory_profiler
 PyWavelets
+filelock

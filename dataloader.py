@@ -1,16 +1,10 @@
 import logging
 import os
-import random
-import time
 
-import numpy as np
 import pandas as pd
-from vos import Client
 
 from data_stream import DataStream
 from data_utils import setup_logging
-
-client = Client()
 
 band_dict = {
     'cfis-u': {
@@ -169,50 +163,56 @@ queue_size = (
 exclude_processed_tiles = False  # exclude already processed tiles from training
 logging_level = logging.INFO
 
-
-def run_training_step(item):
-    """
-    Args:
-        item (tuple): data package, (cutout stack, metadata, tile numbers)
-    """
-    logging.info(f'Simulating training on tile {item[2]}..')
-    process_time = random.uniform(50, 120)  # Random training duration
-    time.sleep(process_time)
-    logging.info(f'Processed: {item[2]} (simulated {process_time:.2f}s delay)')
-    logging.info(
-        f'Cutout shape: {item[0].shape}, cutout datatype: {item[0].dtype}. Length catalog: {len(item[1])}.'
-    )
-    if np.any(item[0] != 0):
-        logging.info(f'Cutout stack for tile {item[2]} is not empty.')
+setup_logging(log_directory, __file__, logging_level=logging_level)
 
 
-def dataset_wrapper():
-    setup_logging(log_directory, __file__, logging_level=logging_level)
-
-    ##setup_logging(log_directory, __file__, logging_level=logging.INFO)
+def dataset_wrapper(
+    update_tiles=True,
+    tile_info_dir=tile_info_directory,
+    unions_det_dir=unions_detection_directory,
+    band_constr=band_constraint,
+    download_dir=download_directory,
+    dict_in=band_dict_incl,
+    size=cutout_size,
+    at_least_key=at_least,
+    dwarf_cat=dwarf_catalog,
+    z_class_catalog=redshift_class_catalog,
+    lens_cat=lens_catalog,
+    processed=processed_file,
+    num_objects=number_objects,
+    show_tile_stats=show_tile_statistics,
+    cut_workers=num_cutout_workers,
+    dl_workers=num_download_workers,
+    q_size=queue_size,
+    exclude_processed=exclude_processed_tiles,
+    world_size=1,
+    rank=0,
+):
     dataset = DataStream(
         update_tiles,
-        tile_info_directory,
-        unions_detection_directory,
-        band_constraint,
-        download_directory,
-        band_dict,
-        cutout_size,
-        at_least,
-        dwarf_catalog,
-        redshift_class_catalog,
-        lens_catalog,
-        number_objects,
-        show_tile_statistics,
-        num_cutout_workers,
-        num_download_workers,
-        queue_size,
-        processed_file,
-        exclude_processed_tiles,
+        tile_info_dir,
+        unions_det_dir,
+        band_constr,
+        download_dir,
+        dict_in,
+        size,
+        at_least_key,
+        dwarf_cat,
+        z_class_catalog,
+        lens_cat,
+        processed,
+        num_objects,
+        show_tile_stats,
+        cut_workers,
+        dl_workers,
+        q_size,
+        exclude_processed,
+        world_size,
+        rank,
     )
 
     # Prefill the queue to create a buffer
     if dataset.preload():
-        print('Preload finished.')
+        logging.info('Preload finished.')
 
         return dataset

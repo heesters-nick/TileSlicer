@@ -15,6 +15,7 @@ import requests
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.table import Table
+from filelock import FileLock
 from tqdm import tqdm
 from vos import Client
 
@@ -445,9 +446,9 @@ def add_labels(det_df, dwarf_cat, z_class_cat, lens_cat, tile_nums):
     det_idx_z_class = det_idx_z_class.astype(np.int32)  # make sure index is int
 
     # add redshift and class labels to detections dataframe
-    det_df.loc[:, 'class'] = np.nan
+    det_df.loc[:, 'class_label'] = np.nan
     det_df.loc[:, 'zspec'] = np.nan
-    det_df.loc[det_idx_z_class, 'class'] = label_matches_z_class['cspec'].values
+    det_df.loc[det_idx_z_class, 'class_label'] = label_matches_z_class['cspec'].values
     det_df.loc[det_idx_z_class, 'zspec'] = label_matches_z_class['zspec'].values
 
     logging.debug(
@@ -462,7 +463,7 @@ def add_labels(det_df, dwarf_cat, z_class_cat, lens_cat, tile_nums):
         f'Added {np.count_nonzero(~np.isnan(det_df["zspec"]))} redshift labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
     )
     logging.debug(
-        f'Added {np.count_nonzero(~np.isnan(det_df["class"]))} class labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
+        f'Added {np.count_nonzero(~np.isnan(det_df["class_label"]))} class labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
     )
 
     # read the lens catalog
@@ -492,7 +493,7 @@ def add_labels(det_df, dwarf_cat, z_class_cat, lens_cat, tile_nums):
     # add lsb labels to detections dataframe
     det_df.loc[:, 'lsb'] = np.nan
     det_df.loc[det_idx_lsb, 'lsb'] = 1
-    det_df.loc[det_idx_lsb, 'class'] = 2  # dwarfs are galaxies
+    det_df.loc[det_idx_lsb, 'class_label'] = 2  # dwarfs are galaxies
 
     logging.debug(
         f'Added {np.count_nonzero(~np.isnan(det_df["lsb"]))} LSB labels to the detection dataframe for tile {det_df["tile"].iloc[0]}.'
@@ -503,7 +504,7 @@ def add_labels(det_df, dwarf_cat, z_class_cat, lens_cat, tile_nums):
             f'Found {len(lsb_unmatches)} undetected but known dwarfs in tile {dwarfs_df.tile[0]}.'  # type: ignore
         )
         lsb_unmatches.loc[:, 'lsb'] = 1  # dwarfs are LSB
-        lsb_unmatches.loc[:, 'class'] = 2  # dwarfs are galaxies
+        lsb_unmatches.loc[:, 'class_label'] = 2  # dwarfs are galaxies
         # augment detections dataframe with undetected but known dwarfs
         common_columns = det_df.columns.intersection(lsb_unmatches.columns)
         det_df = pd.concat([det_df, lsb_unmatches[common_columns]], ignore_index=True)
@@ -522,7 +523,18 @@ def save_tile_cat(table_dir, tile_nums, obj_in_tile):
     """
     logging.debug(f'Saving tile catalog for tile {tile_nums} to a temporary file.')
     temp_path = os.path.join(table_dir, f'cat_temp_{tile_nums[0]}_{tile_nums[1]}.parquet')
-    columns = ['ra', 'dec', 'cfis_id', 'class', 'lens', 'lsb', 'mag_r', 'tile', 'zspec', 'bands']
+    columns = [
+        'ra',
+        'dec',
+        'cfis_id',
+        'class_label',
+        'lens',
+        'lsb',
+        'mag_r',
+        'tile',
+        'zspec',
+        'bands',
+    ]
     obj_in_tile[columns].to_parquet(temp_path, index=False)
 
 
@@ -640,8 +652,12 @@ def read_processed(file_path):
         set: set of file names
     """
     try:
-        with open(file_path, 'r') as file:
-            return {line.strip() for line in file.readlines()}
+        with FileLock(file_path + '.lock'):
+            with open(file_path, 'r') as file:
+                return {line.strip() for line in file.readlines()}
+    except FileNotFoundError:
+        logging.info(f'File {file_path} not found. No tiles processed yet, returning empty set.')
+        return set()
     except IOError as e:
         logging.error(f'Error reading file: {e}')
         return set()
@@ -657,8 +673,12 @@ def update_processed(file_name, file_path):
     """
     logging.info(f'Adding {file_name} to processed file.')
     try:
-        with open(file_path, 'a') as file:
-            file.write(file_name + '\n')
+        with FileLock(file_path + '.lock'):
+            # Create an empty file if it does not exist
+            if not os.path.exists(file_path):
+                open(file_path, 'a').close()
+            with open(file_path, 'a') as file:
+                file.write(file_name + '\n')
     except IOError as e:
         logging.error(f'Error writing to file: {e}')
 
@@ -691,10 +711,10 @@ def update_h5_labels_parallel(tile_nums, h5_path_list, unions_det_dir, z_class_c
         # match detections to redshift and class catalog
         det_idx, label_matches, _, _ = match_cats(obj_df, class_z_df, max_sep=1.0)
         # add redshift and class labels to detections dataframe
-        obj_df['class'] = np.nan
+        obj_df['class_label'] = np.nan
         obj_df['zspec'] = np.nan
         det_idx = det_idx.astype(np.int32)  # make sure index is int
-        obj_df.loc[det_idx, 'class'] = label_matches['cspec'].values
+        obj_df.loc[det_idx, 'class_label'] = label_matches['cspec'].values
         obj_df.loc[det_idx, 'zspec'] = label_matches['zspec'].values
 
         # read the lens catalog
@@ -710,7 +730,7 @@ def update_h5_labels_parallel(tile_nums, h5_path_list, unions_det_dir, z_class_c
         obj_df['ra'] = obj_df['ra'].astype('float32')
         obj_df['dec'] = obj_df['dec'].astype('float32')
         obj_df['zspec'] = obj_df['zspec'].astype('float32')
-        obj_df['class'] = obj_df['class'].astype('float32')
+        obj_df['class_label'] = obj_df['class_label'].astype('float32')
     else:
         logging.error(f'No UNIONS catalog for tile {tile_nums} found.')
 
@@ -743,7 +763,7 @@ def update_single_h5(h5_path, obj_dataframe):
             # get part of the obj_df where ra and dec are equal to ra/dec in df
             merged_df = pd.merge(df, obj_dataframe, on=['ra', 'dec'], how='inner')
 
-            dataset_names = ['zspec', 'class', 'lens']  # Specify the dataset names
+            dataset_names = ['zspec', 'class_label', 'lens']  # Specify the dataset names
             # create empty dataframe
             h5_df = pd.DataFrame()
             # Check if datasets exist and create a DataFrame
@@ -761,7 +781,7 @@ def update_single_h5(h5_path, obj_dataframe):
                 merged_df['zspec'].fillna('nan') == h5_df['zspec'].fillna('nan')
             )
             class_matching = np.count_nonzero(
-                merged_df['class'].fillna('nan') == h5_df['class'].fillna('nan')
+                merged_df['class_label'].fillna('nan') == h5_df['class_label'].fillna('nan')
             )
 
             lens_matching = np.count_nonzero(
@@ -772,7 +792,7 @@ def update_single_h5(h5_path, obj_dataframe):
                 f'Found {np.count_nonzero(~merged_df["zspec"].isna())} objects with available redshift labels for {file_name}.'
             )
             logging.debug(
-                f'Found {np.count_nonzero(~merged_df["class"].isna())} objects with available class labels for {file_name}.'
+                f'Found {np.count_nonzero(~merged_df["class_label"].isna())} objects with available class labels for {file_name}.'
             )
             logging.debug(
                 f'Found {np.count_nonzero(~merged_df["lens"].isna())} objects that are known lenses for {file_name}.'

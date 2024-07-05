@@ -558,24 +558,26 @@ class DataStream(IterableDataset):
 
     def __init__(
         self,
-        update_tiles,
-        tile_info_dir,
-        unions_det_dir,
-        band_constr,
-        download_dir,
-        in_dict,
-        cutout_size,
-        at_least_key,
-        dwarf_cat,
-        z_class_cat,
-        lens_cat,
-        num_objects,
-        show_stats,
-        cutout_workers,
-        download_workers,
-        queue_size,
-        processed,
-        exclude_processed,
+        update_tiles=False,
+        tile_info_dir=tile_info_directory,
+        unions_det_dir=unions_detection_directory,
+        band_constr=5,
+        download_dir=download_directory,
+        in_dict=band_dict_incl,
+        cutout_size=224,
+        at_least_key=False,
+        dwarf_cat=dwarf_catalog,
+        z_class_cat=redshift_class_catalog,
+        lens_cat=lens_catalog,
+        processed=processed_file,
+        num_objects=10000,
+        show_stats=False,
+        cutout_workers=5,
+        download_workers=5,
+        queue_size=2,
+        exclude_processed=True,
+        world_size=1,
+        rank=0,
     ):
         self.update_tiles = update_tiles
         self.tile_info_dir = tile_info_dir
@@ -596,6 +598,8 @@ class DataStream(IterableDataset):
         self.tiles_in_queue = deque()
         self.processed = processed
         self.exclude_processed = exclude_processed
+        self.world_size = world_size
+        self.rank = rank
 
         # maxsize determines how long the queue should be
         self.prefetch_queue = queue.Queue(maxsize=self.queue_size)
@@ -639,6 +643,11 @@ class DataStream(IterableDataset):
         # Exclude tiles that have already been processed from the list
         if self.exclude_processed:
             self.tiles_x_bands = list(set(self.tiles_x_bands) - processed_tiles)
+
+        # Distribute tiles across available GPUs
+        self.tiles_x_bands = [
+            tile for i, tile in enumerate(self.tiles_x_bands) if i % self.world_size == self.rank
+        ]
 
         logging.info('Finished initializing tiles.')
         # Initialize tile index (for tracking which tile to process next)
@@ -1341,7 +1350,7 @@ def main(
         #     obj_in_tile['ra'].values,
         #     obj_in_tile['dec'].values,
         #     obj_in_tile['mag_r'].values,
-        #     obj_in_tile['class'].values,
+        #     obj_in_tile['class_label'].values,
         #     obj_in_tile['zspec'].values,
         #     obj_in_tile['lsb'].values,
         #     obj_in_tile['lens'].values,
