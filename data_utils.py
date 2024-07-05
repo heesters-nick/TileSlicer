@@ -97,17 +97,14 @@ def update_available_tiles(path, in_dict, save=True):
         try:
             logging.info(f'Retrieving {band_filter}-band tiles...')
             band_tiles = Client().glob1(vos_dir, f'*{suffix}')
-            # band_tiles = list_vospace(vos_dir, f'*{suffix}')
-            # band_tiles = [os.path.basename(tile) for tile in band_tiles]
-            # band_tiles = filter_files(band_files, suffix)
             end_fetch = time.time()
             logging.info(
                 f'Retrieving {band_filter}-band tiles completed. Took {np.round((end_fetch-start_fetch)/60, 3)} minutes.'
             )
+            if save:
+                np.savetxt(os.path.join(path, f'{band}_tiles.txt'), band_tiles, fmt='%s')
         except Exception as e:
             logging.error(f'Error fetching {band_filter}-band tiles: {e}')
-        if save:
-            np.savetxt(os.path.join(path, f'{band}_tiles.txt'), band_tiles, fmt='%s')
 
 
 def load_available_tiles(path, in_dict):
@@ -123,7 +120,7 @@ def load_available_tiles(path, in_dict):
 
     band_tiles = {}
     for band in np.array(list(in_dict.keys())):
-        tiles = np.loadtxt(path + f'{band}_tiles.txt', dtype=str)
+        tiles = np.loadtxt(os.path.join(path, f'{band}_tiles.txt'), dtype=str)
         band_tiles[band] = tiles
 
     return band_tiles
