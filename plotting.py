@@ -227,6 +227,8 @@ def find_percentile_from_target(cutouts, target_value):
         else:
             results[band] = 100.0
 
+    return results
+
 
 def desaturate(image, saturation_percentile, interpolate_neg=False, min_size=10, fill_holes=True):
     """
