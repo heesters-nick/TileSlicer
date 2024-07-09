@@ -137,7 +137,7 @@ show_plot = False
 # Save plot
 save_plot = True
 
-platform = 'Narval'  #'CANFAR' #'Narval'
+platform = 'CANFAR'  #'CANFAR' #'Narval'
 if platform == 'CANFAR':
     root_dir_main = '/arc/home/heestersnick/tileslicer'
     root_dir_data = '/arc/projects/unions'
@@ -256,7 +256,7 @@ def cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band):
         numpy.ndarray: cutouts of all objects (n_objects, size, size)
     """
     cutouts_for_band = np.zeros((len(obj_in_tile), size, size), dtype=np.float32)
-    tile_dir = download_dir + f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
+    tile_dir = os.path.join(download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
     prefix = in_dict[band]['name']
     suffix = in_dict[band]['suffix']
     delimiter = in_dict[band]['delimiter']
@@ -278,7 +278,7 @@ def cutout_one_band(tile, obj_in_tile, download_dir, in_dict, size, band):
             )
             cutout_start = time.time()
             for i, (x, y) in enumerate(zip(xs, ys)):
-                cutouts_for_band[i] = cutout2d(data, x, y, size, cutout_empty)
+                cutouts_for_band[i] = cutout2d(data, x, y, size, cutout_empty.copy())
             logging.debug(
                 f'Finished cutting {len(xs)} objects for {band} in {np.round(time.time()-cutout_start, 2)} seconds.'
             )
@@ -446,7 +446,7 @@ def pixel_stats_one_band(tile, df_empty, download_dir, in_dict, band):
     Returns:
         dataframe: pixel stats in all bands
     """
-    tile_dir = download_dir + f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
+    tile_dir = os.path.join(download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
     prefix = in_dict[band]['name']
     suffix = in_dict[band]['suffix']
     delimiter = in_dict[band]['delimiter']
@@ -576,6 +576,7 @@ class DataStream(IterableDataset):
         download_workers=5,
         queue_size=2,
         exclude_processed=True,
+        delete_raw=True,
         world_size=1,
         rank=0,
     ):
@@ -598,6 +599,7 @@ class DataStream(IterableDataset):
         self.tiles_in_queue = deque()
         self.processed = processed
         self.exclude_processed = exclude_processed
+        self.delete_raw = delete_raw
         self.world_size = world_size
         self.rank = rank
 
@@ -858,7 +860,7 @@ class DataStream(IterableDataset):
         tile_folder = os.path.join(
             self.download_dir, f'{str(tile_nums[0]).zfill(3)}_{str(tile_nums[1]).zfill(3)}'
         )
-        if os.path.exists(tile_folder):
+        if os.path.exists(tile_folder) and self.delete_raw:
             logging.info(f'Cutting done, deleting tile {tile_nums}.')
             shutil.rmtree(tile_folder)
 
@@ -891,6 +893,14 @@ class DataStream(IterableDataset):
 
         with self.queue_lock:
             return self.prefetch_queue.qsize()
+
+    def tile_availability(self):
+        """
+        Get tile availability.
+
+        return TileAvailability instance.
+        """
+        return self.availability
 
     def __iter__(self):
         return self

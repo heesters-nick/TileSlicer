@@ -39,9 +39,9 @@ band_dict = {
         'zfill': 3,
     },
     'ps-i': {
-        'name': 'PS-DR3',
+        'name': 'PSS.DR4',
         'band': 'i',
-        'vos': 'vos:cfis/panstarrs/DR3/tiles/',
+        'vos': 'vos:cfis/panstarrs/DR4/resamp/',
         'suffix': '.i.fits',
         'delimiter': '.',
         'fits_ext': 0,
@@ -57,7 +57,7 @@ band_dict = {
         'zfill': 0,
     },
     'ps-z': {
-        'name': 'DR4',
+        'name': 'PSS.DR4',
         'band': 'ps-z',
         'vos': 'vos:cfis/panstarrs/DR4/resamp/',
         'suffix': '.z.fits',
@@ -83,7 +83,7 @@ else:
 # return the number of available tiles that are available in at least 5, 4, 3, 2, 1 bands
 at_least = False
 # show stats on currently available tiles, remember to update
-show_tile_statistics = False
+show_tile_statistics = True
 # show number of tiles available including this band
 combinations_with_band = 'cfis_lsb-r'
 # print per tile availability
@@ -101,7 +101,7 @@ show_plot = False
 # Save plot
 save_plot = True
 
-platform = 'Narval'  #'CANFAR'
+platform = 'CANFAR'  #'CANFAR'
 if platform == 'CANFAR':
     root_dir_main = '/arc/home/heestersnick/tileslicer'
     root_dir_data = '/arc/projects/unions'
@@ -167,9 +167,10 @@ number_objects = 100  # give number of objects per tile that should be processed
 num_cutout_workers = 5  # number of threads for cutout creation
 num_download_workers = 5  # number of threads for tile download
 queue_size = 2  # max queue size, keep as low as possible to not consume too much RAM
-logging_level = logging.DEBUG  # define the logging level
+logging_level = logging.INFO  # define the logging level
 exclude_processed_tiles = False  # exclude already processed tiles from training
-save_cutouts_and_metadata = False  # save cutouts and metadata to files
+save_cutouts_and_metadata = True  # save cutouts and metadata to files
+delete_raw_data = False  # delete raw tile data after cutting
 
 setup_logging(log_directory, __file__, logging_level=logging_level)
 
@@ -198,6 +199,7 @@ def main(
     unions_det_dir,
     band_constr,
     download_dir,
+    cutout_dir,
     table_dir,
     in_dict,
     cutout_size,
@@ -212,37 +214,41 @@ def main(
     queue_size,
     processed,
     exclude_processed,
+    delete_raw,
     save_cuts_and_meta,
 ):
     dataset = DataStream(
-        update,
-        tile_info_dir,
-        unions_det_dir,
-        band_constr,
-        download_dir,
-        in_dict,
-        cutout_size,
-        at_least_key,
-        dwarf_cat,
-        z_class_cat,
-        lens_cat,
-        num_objects,
-        show_stats,
-        cutout_workers,
-        download_workers,
-        queue_size,
-        processed,
-        exclude_processed,
+        update_tiles=update,
+        tile_info_dir=tile_info_dir,
+        unions_det_dir=unions_det_dir,
+        band_constr=band_constr,
+        download_dir=download_dir,
+        in_dict=in_dict,
+        cutout_size=cutout_size,
+        at_least_key=at_least_key,
+        dwarf_cat=dwarf_cat,
+        z_class_cat=z_class_cat,
+        lens_cat=lens_cat,
+        num_objects=num_objects,
+        show_stats=show_stats,
+        cutout_workers=cutout_workers,
+        download_workers=download_workers,
+        queue_size=queue_size,
+        processed=processed,
+        exclude_processed=exclude_processed,
+        delete_raw=delete_raw,
     )  # Initialize dataset
 
     max_iterations = 3  # How many training steps should be simulated
     num_iterations = 0  # Iterations done
+    availability = dataset.tile_availability()
     # Prefill the queue to create a buffer
     if dataset.preload():
         logging.info('Preload finished.')
         try:
             for cutouts, catalog, tile in dataset:  # pull out the an item for training
                 logging.debug(f'Got tile {tile}.')
+                avail_bands = ''.join(availability.get_availability(tile)[0])
                 simulated_training_step((cutouts, catalog, tile))
                 update_processed(str(tile), processed)
                 if save_cuts_and_meta:
@@ -259,8 +265,8 @@ def main(
                         catalog['lsb'].values,
                         catalog['lens'].values,
                         os.path.join(
-                            '/arc/home/heestersnick/tileslicer/cutouts',
-                            f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}_{cutout_size}x{cutout_size}_ugriz.h5',
+                            cutout_dir,
+                            f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}_{cutout_size}x{cutout_size}_{avail_bands}.h5',
                         ),
                     )
                 del cutouts  # cleanup
@@ -283,6 +289,7 @@ if __name__ == '__main__':
         unions_detection_directory,
         band_constraint,
         download_directory,
+        cutout_directory,
         table_directory,
         band_dict_incl,
         cutout_size,
@@ -297,5 +304,6 @@ if __name__ == '__main__':
         queue_size,
         processed_file,
         exclude_processed_tiles,
+        delete_raw_data,
         save_cutouts_and_metadata,
     )

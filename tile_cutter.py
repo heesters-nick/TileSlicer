@@ -134,7 +134,7 @@ show_plot = False
 # Save plot
 save_plot = True
 
-platform = 'Narval'  #'CANFAR' #'Narval'
+platform = 'CANFAR'  #'CANFAR' #'Narval'
 if platform == 'CANFAR':
     root_dir_main = '/arc/home/heestersnick'
     root_dir_data = '/arc/projects/unions'
@@ -282,7 +282,9 @@ def download_tile_for_bands(availability, tile_numbers, in_dict, download_dir, m
     :return: True/False if the download was successful/failed
     """
     avail_idx = availability.get_availability(tile_numbers)[1]
-    tile_dir = download_dir + f'{str(tile_numbers[0]).zfill(3)}_{str(tile_numbers[1]).zfill(3)}'
+    tile_dir = os.path.join(
+        download_dir, f'{str(tile_numbers[0]).zfill(3)}_{str(tile_numbers[1]).zfill(3)}'
+    )
     for band in np.array(list(in_dict.keys()))[avail_idx]:
         vos_dir = in_dict[band]['vos']
         prefix = in_dict[band]['name']
@@ -303,7 +305,7 @@ def download_tile_for_bands(availability, tile_numbers, in_dict, download_dir, m
                 if method == 'command':
                     # command line
                     os.system(
-                        f'vcp -v {vos_dir + tile_fitsfilename} {os.path.join(tile_dir, temp_name)}'
+                        f'vcp -v {os.path.join(vos_dir, tile_fitsfilename)} {os.path.join(tile_dir, temp_name)}'
                     )
                 else:
                     # API
@@ -367,7 +369,9 @@ def download_tile_for_bands_parallel(availability, tile_nums, in_dict, download_
             suffix = in_dict[band]['suffix']
             delimiter = in_dict[band]['delimiter']
             zfill = in_dict[band]['zfill']
-            tile_dir = download_dir + f'{str(tile_nums[0]).zfill(3)}_{str(tile_nums[1]).zfill(3)}'
+            tile_dir = os.path.join(
+                download_dir, f'{str(tile_nums[0]).zfill(3)}_{str(tile_nums[1]).zfill(3)}'
+            )
             os.makedirs(tile_dir, exist_ok=True)
             tile_fitsfilename = f'{prefix}{delimiter}{str(tile_nums[0]).zfill(zfill)}{delimiter}{str(tile_nums[1]).zfill(zfill)}{suffix}'
             temp_name = '.'.join(tile_fitsfilename.split('.')[:-1]) + '_temp.fits'
@@ -435,7 +439,7 @@ def make_cutouts_all_bands(
         logging.info(f'Cutting out objects in tile {tile}.')
     avail_idx = availability.get_availability(tile)[1]
     cutout = np.zeros((len(obj_in_tile), len(in_dict), size, size), dtype=np.float32)
-    tile_dir = download_dir + f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}'
+    tile_dir = os.path.join(download_dir, f'{str(tile[0]).zfill(3)}_{str(tile[1]).zfill(3)}')
     for j, band in enumerate(np.array(list(in_dict.keys()))[avail_idx]):
         prefix = in_dict[band]['name']
         suffix = in_dict[band]['suffix']

@@ -20,3 +20,4 @@ cadcproxy.pem
 *slurm*
 (*
 processed.txt
+processed.txt.lock

@@ -132,11 +132,19 @@ def get_tile_numbers(name):
     :param name: .fits file name of a given tile
     :return two three digit tile numbers
     """
-    parts = name.split('.')
+    # parts = name.split('.')
+    # if name.startswith('calexp'):
+    #     parts = parts[0].split('_')
+    # xxx, yyy = map(int, parts[1:3])
+
     if name.startswith('calexp'):
-        parts = parts[0].split('_')
-    xxx, yyy = map(int, parts[1:3])
-    return xxx, yyy
+        pattern = re.compile(r'(?<=[_-])(\d+)(?=[_.])')
+    else:
+        pattern = re.compile(r'(?<=\.)(\d+)(?=\.)')
+
+    matches = pattern.findall(name)
+
+    return tuple(map(int, matches))
 
 
 def extract_tile_numbers(tile_dict, in_dict):
