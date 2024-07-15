@@ -407,7 +407,7 @@ def cutout_rgb(
     )
 
     img_linear = Image.fromarray(img_linear)
-    img_linear = img_linear.transpose(Image.FLIP_TOP_BOTTOM)
+    img_linear = img_linear.transpose(Image.FLIP_TOP_BOTTOM)  # type: ignore
     obj_id = cutout['cfis_id'][obj_idx].decode('utf-8').replace(' ', '_')
 
     if save_rgb_cutout:

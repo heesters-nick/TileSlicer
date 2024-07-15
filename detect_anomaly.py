@@ -121,7 +121,7 @@ def detect_anomaly(
             image_mod = image
         norm_mod = simple_norm(image_mod, 'sqrt', percent=96.0)
         plt.imshow(image_mod, cmap='gray_r', origin='lower', norm=norm_mod)  # type: ignore
-        if np.any(global_mask > 0.0):
+        if np.any(global_mask):
             plt.imshow(global_mask, cmap='Reds', vmin=0, alpha=0.5, origin='lower')
         plt.title('Modified Image')
         plt.axis('off')

@@ -2,7 +2,7 @@ numpy
 matplotlib
 scipy
 pandas
-astropy==6.0.0
+astropy
 tqdm
 h5py
 jupyter
@@ -18,3 +18,5 @@ torch
 memory_profiler
 PyWavelets
 filelock
+opencv-python
+photutils
