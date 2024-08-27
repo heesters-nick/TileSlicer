@@ -378,12 +378,12 @@ def match_cats(df_det, df_label, max_sep=15.0):
         label_matches (dataframe): known objects that were detected
         det_matches (dataframe): detections that are known objects
     """
-    c_det = SkyCoord(df_det['ra'], df_det['dec'], unit=u.deg)
-    c_label = SkyCoord(df_label['ra'], df_label['dec'], unit=u.deg)
+    c_det = SkyCoord(df_det['ra'], df_det['dec'], unit=u.deg)  # type: ignore
+    c_label = SkyCoord(df_label['ra'], df_label['dec'], unit=u.deg)  # type: ignore
 
     idx, d2d, _ = c_label.match_to_catalog_3d(c_det)
     # sep_constraint is a list of True/False
-    sep_constraint = d2d < max_sep * u.arcsec
+    sep_constraint = d2d < max_sep * u.arcsec  # type: ignore
     label_matches = df_label[sep_constraint].reset_index(drop=True)
     label_unmatches = df_label[~sep_constraint].reset_index(drop=True)
     det_matching_idx = idx[sep_constraint]  # det_matching_idx is a list of indices
