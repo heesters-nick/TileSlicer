@@ -53,6 +53,7 @@ band_dict = {
         'delimiter': '.',
         'fits_ext': 0,
         'zfill': 3,
+        'zp': 30.0,
     },
     'whigs-g': {
         'name': 'calexp-CFIS',
@@ -62,6 +63,7 @@ band_dict = {
         'delimiter': '_',
         'fits_ext': 1,
         'zfill': 0,
+        'zp': 27.0,
     },
     'cfis_lsb-r': {
         'name': 'CFIS_LSB',
@@ -71,6 +73,7 @@ band_dict = {
         'delimiter': '.',
         'fits_ext': 0,
         'zfill': 3,
+        'zp': 30.0,
     },
     'ps-i': {
         'name': 'PS-DR3',
@@ -80,6 +83,7 @@ band_dict = {
         'delimiter': '.',
         'fits_ext': 0,
         'zfill': 3,
+        'zp': 30.0,
     },
     'wishes-z': {
         'name': 'WISHES',
@@ -89,15 +93,17 @@ band_dict = {
         'delimiter': '.',
         'fits_ext': 1,
         'zfill': 0,
+        'zp': 27.0,
     },
     'ps-z': {
-        'name': 'DR4',
+        'name': 'PSS.DR4',
         'band': 'ps-z',
         'vos': 'vos:cfis/panstarrs/DR4/resamp/',
         'suffix': '.z.fits',
         'delimiter': '.',
         'fits_ext': 0,
         'zfill': 3,
+        'zp': 30.0,
     },
 }
 
@@ -124,9 +130,11 @@ print_per_tile_availability = False
 # use UNIONS catalogs to make the cutouts
 with_unions_catalogs = False
 # download the tiles
-download_tiles = True
+download_tiles = False
+# cutout objects
+cutout_objects = False
 # Plot cutouts from one of the tiles after execution
-with_plot = True
+with_plot = False
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
 plot_random_cutout = False
 # Show plot
@@ -136,7 +144,7 @@ save_plot = True
 
 platform = 'CANFAR'  #'CANFAR' #'Narval'
 if platform == 'CANFAR':
-    root_dir_main = '/arc/home/heestersnick'
+    root_dir_main = '/arc/home/heestersnick/tileslicer'
     root_dir_data = '/arc/projects/unions'
     unions_detection_directory = os.path.join(
         root_dir_data, 'catalogues/unions/GAaP_photometry/UNIONS2000'
@@ -192,7 +200,7 @@ os.makedirs(log_directory, exist_ok=True)
 # setup_logging(log_dir, __name__)
 
 ### tile parameters ###
-band_constraint = 5  # define the minimum number of bands that should be available for a tile
+band_constraint = 1  # define the minimum number of bands that should be available for a tile
 tile_batch_size = 5  # number of tiles to process in parallel
 object_batch_size = 5000  # number of objects to process at a time
 cutout_size = 224
@@ -534,6 +542,7 @@ def process_tile(
     size,
     w_unions_cats,
     obj_batch_size,
+    cutout_obj,
 ):
     """
     Process a tile, create cutouts in all bands, save cutouts and metadata to hdf5 file
@@ -555,6 +564,7 @@ def process_tile(
     :param size: cutout size
     :param w_unions_cats: use UNIONS catalogs
     :param obj_batch_size: number of objects to process at a time
+    :param cutout_obj: cutout objects (True/False)
     :return image cutout in available bands, array with shape: (n_bands, cutout_size, cutout_size)
     """
     avail_bands = ''.join(availability.get_availability(tile)[0])
@@ -644,25 +654,28 @@ def process_tile(
             logging.info(f'No objects cut out in tile {tile}.')
             return 0, 0, 0, 0, None
 
-        cutout = make_cutouts_all_bands(
-            availability, tile, obj_in_tile, download_dir, in_dict, size
-        )
-        # no r-band magnitude available for the dwarfs
-        mag_r = np.nan * np.ones(len(obj_in_tile))
-        save_to_h5(
-            cutout,
-            tile,
-            obj_in_tile[id_key].values,
-            obj_in_tile[ra_key].values,
-            obj_in_tile[dec_key].values,
-            mag_r,
-            obj_in_tile['class_label'].values,
-            obj_in_tile['zspec'].values,
-            obj_in_tile['lsb'].values,
-            obj_in_tile['lens'].values,
-            save_path,
-        )
-        n_cutouts = cutout.shape[0]
+        if cutout_obj:
+            cutout = make_cutouts_all_bands(
+                availability, tile, obj_in_tile, download_dir, in_dict, size
+            )
+            # no r-band magnitude available for the dwarfs
+            mag_r = np.nan * np.ones(len(obj_in_tile))
+            save_to_h5(
+                cutout,
+                tile,
+                obj_in_tile[id_key].values,
+                obj_in_tile[ra_key].values,
+                obj_in_tile[dec_key].values,
+                mag_r,
+                obj_in_tile['class_label'].values,
+                obj_in_tile['zspec'].values,
+                obj_in_tile['lsb'].values,
+                obj_in_tile['lens'].values,
+                save_path,
+            )
+            n_cutouts = cutout.shape[0]
+        else:
+            n_cutouts = 0
 
     if w_unions_cats:
         if n_batches_processed == (batch_nr + 1):
@@ -711,6 +724,7 @@ def main(
     show_stats,
     w_unions_cats,
     dl_tiles,
+    cutout_obj,
     build_kdtree,
     coordinates=None,
     dataframe_path=None,
@@ -915,6 +929,7 @@ def main(
                     size,
                     w_unions_cats,
                     obj_batch_size,
+                    cutout_obj,
                 ): tile
                 for tile in tile_batch
             }
@@ -923,7 +938,7 @@ def main(
                 tile = future_to_tile[future]
                 try:
                     result = future.result()
-                    if (result[0] + result[1]) == result[2]:
+                    if (result[0] + result[1]) == result[2] or not cutout_obj:
                         logging.info('All objects in the tile were cut out.')
                         new_cutouts = result[0] + result[1]
                         total_cutouts_count += new_cutouts
@@ -1087,6 +1102,7 @@ if __name__ == '__main__':
         'show_stats': show_tile_statistics,
         'w_unions_cats': with_unions_catalogs,
         'dl_tiles': download_tiles,
+        'cutout_obj': cutout_objects,
         'build_kdtree': build_new_kdtree,
         'coordinates': args.coordinates,
         'dataframe_path': args.dataframe,
