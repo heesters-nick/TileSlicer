@@ -22,6 +22,8 @@ from data_utils import (
     TileAvailability,
     add_labels,
     extract_tile_numbers,
+    file_lock,
+    get_lock_path,
     get_numbers_from_folders,
     load_available_tiles,
     object_batch_generator,
@@ -108,12 +110,12 @@ band_dict = {
 }
 
 # define the bands to consider
-considered_bands = ['cfis-u', 'whigs-g', 'cfis_lsb-r', 'ps-i', 'wishes-z']
+considered_bands = ['whigs-g', 'cfis_lsb-r', 'ps-i']
 # create a dictionary with the bands to consider
 band_dict_incl = {key: band_dict.get(key) for key in considered_bands}
 
 # retrieve from the VOSpace and update the currently available tiles; takes some time to run
-update_tiles = True
+update_tiles = False
 # build kd tree with updated tiles otherwise use the already saved tree
 if update_tiles:
     build_new_kdtree = True
@@ -130,9 +132,11 @@ print_per_tile_availability = False
 # use UNIONS catalogs to make the cutouts
 with_unions_catalogs = False
 # download the tiles
-download_tiles = False
+download_tiles = True
 # cutout objects
-cutout_objects = False
+cutout_objects = True
+# save all cutouts to a single h5 file
+save_to_single_h5_file = True
 # Plot cutouts from one of the tiles after execution
 with_plot = False
 # Plot a random cutout from one of the tiles after execution else plot all cutouts
@@ -200,10 +204,10 @@ os.makedirs(log_directory, exist_ok=True)
 # setup_logging(log_dir, __name__)
 
 ### tile parameters ###
-band_constraint = 1  # define the minimum number of bands that should be available for a tile
+band_constraint = 3  # define the minimum number of bands that should be available for a tile
 tile_batch_size = 5  # number of tiles to process in parallel
 object_batch_size = 5000  # number of objects to process at a time
-cutout_size = 224
+cutout_size = 256
 num_workers = 5  # specifiy the number of parallel workers following machine capabilities
 exclude_processed_tiles = False  # exclude already processed tiles from training
 
@@ -475,6 +479,118 @@ def make_cutouts_all_bands(
     return cutout
 
 
+def initialize_h5_file(save_path, n_bands, cutout_size, expected_total_size=None):
+    """
+    Initialize an H5 file with extensible datasets that will store all cutouts and metadata.
+
+    Args:
+        save_path (str): Path where to save the H5 file
+        n_bands (int): number of bands
+        cutout_size (int): square cutout size in pixels
+        expected_total_size (int, optional): Expected total number of objects to optimize chunk size
+
+    Returns:
+        h5py.File: Opened H5 file with initialized datasets
+    """
+    # path to lock file
+    lock_path = get_lock_path(save_path)
+    # lock file while accessing it to avoid race conditions in multiprocessing
+    with file_lock(lock_path):
+        dt = h5py.special_dtype(vlen=str)
+
+        # Create file with chunked datasets that can be extended
+        with h5py.File(save_path, 'w', libver='latest') as hf:
+            # Calculate reasonable chunk sizes based on expected total size
+            chunk_size = min(100, expected_total_size) if expected_total_size else 100
+            chunks = (chunk_size, n_bands, cutout_size, cutout_size)
+            # Initialize empty datasets with maxshape=None to allow unlimited growth
+            hf.create_dataset(
+                'images',
+                shape=(0, 0, 0, 0),
+                maxshape=(None, None, None, None),
+                dtype=np.float32,
+                chunks=chunks,
+            )
+            hf.create_dataset('tile', shape=(0, 2), maxshape=(None, 2), dtype=np.int32)
+            hf.create_dataset('known_id', shape=(0,), maxshape=(None,), dtype=dt)
+            hf.create_dataset('ra', shape=(0,), maxshape=(None,), dtype=np.float32)
+            hf.create_dataset('dec', shape=(0,), maxshape=(None,), dtype=np.float32)
+            hf.create_dataset('zspec', shape=(0,), maxshape=(None,), dtype=np.float32)
+            hf.create_dataset('label', shape=(0,), maxshape=(None,), dtype=np.float32)
+
+    return save_path
+
+
+def append_to_h5(
+    save_path,
+    stacked_cutout,
+    tile_numbers,
+    ids,
+    ras,
+    decs,
+    zspec,
+    label,
+    max_retries=15,
+    retry_delay=0.5,
+):
+    """
+    Append new data to existing H5 file.
+
+    Args:
+        save_path (str): Path to the H5 file
+        stacked_cutout (numpy.ndarray): stacked numpy array of the image data
+        tile_numbers (tuple): tile numbers as (x, y)
+        ids (list): object IDs
+        ras (numpy.ndarray): right ascension coordinates
+        decs (numpy.ndarray): declination coordinates
+        z_label (numpy.ndarray): redshift labels
+        label (numpy.ndarray): LSB class labels
+        max_retries (int): max number of retries when trying to access the file
+        retry_delay (float): seconds between retries
+    """
+    # path to lock file
+    lock_path = get_lock_path(save_path)
+
+    for attempt in range(max_retries):
+        try:
+            with file_lock(lock_path):
+                # First, read the current size
+                with h5py.File(save_path, 'r') as hf:
+                    current_size = hf['images'].shape[0]
+                    new_size = current_size + len(ids)
+                # Then, append the data
+                with h5py.File(save_path, 'a', libver='latest') as hf:
+                    # Verify size hasn't changed
+                    if current_size != hf['images'].shape[0]:
+                        raise RuntimeError('File size changed between read and write')
+
+                    # Resize all datasets to accommodate new data
+                    if current_size == 0:  # First batch - need to set the full shape
+                        hf['images'].resize((new_size,) + stacked_cutout.shape[1:])
+                    else:
+                        hf['images'].resize((new_size,) + hf['images'].shape[1:])
+
+                    for dataset in ['known_id', 'ra', 'dec', 'zspec', 'label']:
+                        hf[dataset].resize((new_size,))
+
+                    hf['tile'].resize((new_size, 2))
+
+                    # Add new data
+                    hf['images'][current_size:new_size] = stacked_cutout
+                    hf['tile'][current_size:new_size] = np.tile(tile_numbers, (len(ids), 1))
+                    hf['known_id'][current_size:new_size] = np.array(ids, dtype='S')
+                    hf['ra'][current_size:new_size] = ras
+                    hf['dec'][current_size:new_size] = decs
+                    hf['zspec'][current_size:new_size] = zspec
+                    hf['label'][current_size:new_size] = label
+
+                return
+        except (OSError, RuntimeError):
+            if attempt == max_retries - 1:  # Last attempt
+                raise  # Re-raise the last exception
+            time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+
+
 def save_to_h5(
     stacked_cutout,
     tile_numbers,
@@ -543,6 +659,8 @@ def process_tile(
     w_unions_cats,
     obj_batch_size,
     cutout_obj,
+    save_to_single_h5,
+    h5_save_path,
 ):
     """
     Process a tile, create cutouts in all bands, save cutouts and metadata to hdf5 file
@@ -565,6 +683,8 @@ def process_tile(
     :param w_unions_cats: use UNIONS catalogs
     :param obj_batch_size: number of objects to process at a time
     :param cutout_obj: cutout objects (True/False)
+    :param save_to_single_h5: save all produced cutouts to a single h5 file
+    :param h5_save_path: save path for cutout file
     :return image cutout in available bands, array with shape: (n_bands, cutout_size, cutout_size)
     """
     avail_bands = ''.join(availability.get_availability(tile)[0])
@@ -658,21 +778,33 @@ def process_tile(
             cutout = make_cutouts_all_bands(
                 availability, tile, obj_in_tile, download_dir, in_dict, size
             )
-            # no r-band magnitude available for the dwarfs
-            mag_r = np.nan * np.ones(len(obj_in_tile))
-            save_to_h5(
-                cutout,
-                tile,
-                obj_in_tile[id_key].values,
-                obj_in_tile[ra_key].values,
-                obj_in_tile[dec_key].values,
-                mag_r,
-                obj_in_tile['class_label'].values,
-                obj_in_tile['zspec'].values,
-                obj_in_tile['lsb'].values,
-                obj_in_tile['lens'].values,
-                save_path,
-            )
+            if save_to_single_h5:
+                append_to_h5(
+                    h5_save_path,
+                    cutout,
+                    tile,
+                    obj_in_tile[id_key].values,
+                    obj_in_tile[ra_key].values,
+                    obj_in_tile[dec_key].values,
+                    obj_in_tile['zspec'].values,
+                    obj_in_tile['lsb'].values,
+                )
+            else:
+                # no r-band magnitude available for the dwarfs
+                mag_r = np.nan * np.ones(len(obj_in_tile))
+                save_to_h5(
+                    cutout,
+                    tile,
+                    obj_in_tile[id_key].values,
+                    obj_in_tile[ra_key].values,
+                    obj_in_tile[dec_key].values,
+                    mag_r,
+                    obj_in_tile['class_label'].values,
+                    obj_in_tile['zspec'].values,
+                    obj_in_tile['lsb'].values,
+                    obj_in_tile['lens'].values,
+                    save_path,
+                )
             n_cutouts = cutout.shape[0]
         else:
             n_cutouts = 0
@@ -725,6 +857,7 @@ def main(
     w_unions_cats,
     dl_tiles,
     cutout_obj,
+    save_to_single_h5,
     build_kdtree,
     coordinates=None,
     dataframe_path=None,
@@ -860,6 +993,13 @@ def main(
     # initialize detailed catalog of processed objects
     complete_processed_cat = None
 
+    # set h5 save path
+    h5_save_path = os.path.join(cutout_dir, f'all_cutouts_{size}x{size}.h5')
+    # initialize h5 file to store cutouts from all tiles
+    initialize_h5_file(
+        h5_save_path, n_bands=band_constr, cutout_size=size, expected_total_size=len(catalog)
+    )
+
     for tile_idx, tile_batch in enumerate(
         process_tiles_in_batches(tiles_x_bands, batch_size), start=1
     ):
@@ -905,7 +1045,6 @@ def main(
         failed_tiles = []
         # initialize the result variables
         result = 0, 0, 0, True, None
-
         # process the tiles in parallel
         with ProcessPoolExecutor() as executor:
             future_to_tile = {
@@ -930,6 +1069,8 @@ def main(
                     w_unions_cats,
                     obj_batch_size,
                     cutout_obj,
+                    save_to_single_h5,
+                    h5_save_path,
                 ): tile
                 for tile in tile_batch
             }
@@ -1103,6 +1244,7 @@ if __name__ == '__main__':
         'w_unions_cats': with_unions_catalogs,
         'dl_tiles': download_tiles,
         'cutout_obj': cutout_objects,
+        'save_to_single_h5': save_to_single_h5_file,
         'build_kdtree': build_new_kdtree,
         'coordinates': args.coordinates,
         'dataframe_path': args.dataframe,

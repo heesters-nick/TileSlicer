@@ -13632,6 +13632,7 @@ calexp-CFIS_313_262.fits
 calexp-CFIS_313_263.fits
 calexp-CFIS_313_264.fits
 calexp-CFIS_313_265.fits
+calexp-CFIS_313_266.fits
 calexp-CFIS_313_267.fits
 calexp-CFIS_313_268.fits
 calexp-CFIS_313_269.fits

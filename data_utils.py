@@ -1,3 +1,4 @@
+import fcntl
 import glob
 import logging
 import os
@@ -5,6 +6,7 @@ import re
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from itertools import combinations
 
 import h5py
@@ -96,7 +98,10 @@ def update_available_tiles(path, in_dict, save=True):
         start_fetch = time.time()
         try:
             logging.info(f'Retrieving {band_filter}-band tiles...')
-            band_tiles = Client().glob1(vos_dir, f'*{suffix}')
+            if band == 'whigs-g':
+                band_tiles = Client().glob1(vos_dir, f'calexp*{suffix}')
+            else:
+                band_tiles = Client().glob1(vos_dir, f'*{suffix}')
             end_fetch = time.time()
             logging.info(
                 f'Retrieving {band_filter}-band tiles completed. Took {np.round((end_fetch-start_fetch)/60, 3)} minutes.'
@@ -1050,3 +1055,21 @@ def list_vospace(directory, suffix=''):
 
 def filter_files(files, suffix):
     return [file for file in files if file.endswith(suffix)]
+
+
+@contextmanager
+def file_lock(lock_path):
+    lock_file = None
+    try:
+        lock_file = open(lock_path, 'w')
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        if lock_file is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            lock_file.close()
+
+
+def get_lock_path(h5_path):
+    """Get the path for the lock file associated with an H5 file."""
+    return f'{h5_path}.lock'
